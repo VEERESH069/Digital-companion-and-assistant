@@ -147,7 +147,7 @@ python tests/test_mic_live.py
 
 ## 👥 Authors
 
-EnsanAI Team
+(Veeresh S K)EnsanAI Team
 
 ---
 
