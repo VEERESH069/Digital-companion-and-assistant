@@ -1,0 +1,18 @@
+"""
+Lean requirements for the free voice agent + PDF summaries.
+If you need Whisper or Coqui XTTS, install those separately.
+"""
+
+python-dotenv>=1.0.0
+openai>=1.12.0
+
+# Voice (free stack)
+gTTS>=2.3.0
+SpeechRecognition>=3.10.0
+PyAudio>=0.2.11
+pygame>=2.5.0
+
+# Data + summaries
+pydantic>=2.6.0
+python-dateutil>=2.8.0
+fpdf2>=2.7.0
