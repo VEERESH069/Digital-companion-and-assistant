@@ -105,15 +105,17 @@ python voice_agent.py
 
 ### Layer 1: Voice Infrastructure
 
-#### STT Service (stt_service.py)
-- **Engine**: OpenAI Whisper
-- **Languages**: Arabic, English (auto-detect)
+#### STT Service (Speech-to-Text)
+- **Engine**: Google Speech Recognition
+- **Languages**: Arabic (Egyptian `ar-EG`), English (`en-US`)
+- **Detection**: Tries Arabic first, falls back to English
 - **Features**: Real-time transcription, dialect support
 
-#### TTS Service (tts_service.py)
-- **Engine**: Coqui XTTS v2
-- **Features**: Voice cloning, emotion support, phrase caching
-- **Output**: 22kHz natural audio
+#### TTS Service (Text-to-Speech)
+- **Engine**: Google TTS (gTTS) - FREE
+- **Languages**: Arabic, English (auto-detected from text content)
+- **Detection**: Checks for Arabic characters (`\u0600-\u06FF`) in text
+- **Features**: Natural voices, automatic language switching
 
 ### Layer 2: Conversational AI
 
@@ -162,29 +164,62 @@ Automatic specialist assignment:
 
 ---
 
+## Language Support (Bilingual)
+
+The voice agent supports **Arabic (Egyptian)** and **English** with intelligent language handling:
+
+### How It Works
+
+| Component | Language Behavior |
+|-----------|------------------|
+| **Greeting** | Arabic (صباح الخير!) |
+| **Speech Recognition** | Tries Arabic first → English fallback |
+| **Agent Responses** | Matches patient's language |
+| **Text-to-Speech** | Auto-detects from response text |
+| **Clinical Documents** | **Always English** (medical standard) |
+
+### Language Flow
+
+```
+Patient speaks Arabic → STT detects Arabic → LLM responds in Arabic → TTS speaks Arabic
+Patient speaks English → STT detects English → LLM responds in English → TTS speaks English
+```
+
+### Exit Keywords
+
+| English | Arabic |
+|---------|--------|
+| goodbye, bye | مع السلامة |
+| exit, stop, end | وداعا، خلاص، شكرا |
+
+### Why Documents Stay in English
+
+- Medical terminology is standardized in English
+- EHR systems typically use English
+- Doctors can read regardless of patient's language
+- The LLM extracts and translates Arabic responses to English clinical data
+
+---
+
 ## Usage
 
 ### Running the Voice Agent
 
-```python
-from voice_agent import VoiceAgent
+```powershell
+# Run bilingual voice agent (Arabic + English)
+python voice_agent.py
+```
 
-# Initialize
-agent = VoiceAgent()
+**Console Output:**
+```
+✓ Ready! Starting conversation...
 
-# Define callbacks
-def on_response(session_id, text, audio):
-    print(f"Agent: {text}")
+💡 Microphone will auto-detect when you speak
+💡 Speak clearly in Arabic or English
+💡 Say 'goodbye' or 'مع السلامة' to exit
+💡 Press Ctrl+C to force stop
 
-agent.on_response_callback = on_response
-
-# Start session
-session_id = agent.start_session(patient_id="P12345")
-
-# End session and get summary
-summary = agent.end_session(session_id)
-print(f"Specialist: {summary.recommended_specialist}")
-print(f"Urgency: {summary.urgency_level}")
+🔊 Agent: صباح الخير! أنا مريم من عيادة كيربوت. كيف حالك النهاردة؟
 ```
 
 ### Generating PDF Summaries
@@ -288,6 +323,7 @@ python tests/test_mic_live.py
 
 ---
 
-**Version:** 1.0.0  
-**Last Updated:** January 2026  
-**Python:** 3.9+
+**Version:** 1.1.0  
+**Last Updated:** February 2026  
+**Python:** 3.9+  
+**Languages:** Arabic (Egyptian), English

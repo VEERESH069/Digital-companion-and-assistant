@@ -51,28 +51,30 @@ microphone: Optional[sr.Microphone] = None
 
 # Conversation history (will be reset for each session)
 conversation_history = [
-    {"role": "system", "content": """You are Mariam, a friendly receptionist at CareBot Clinic.
-You're conducting a pre-visit consultation call to gather medical information.
+    {"role": "system", "content": """أنت مريم، موظفة استقبال ودودة في عيادة كيربوت الطبية.
+تقومين بإجراء مكالمة استشارية ما قبل الزيارة لجمع المعلومات الطبية.
 
-# أنت مريم، موظفة استقبال ودودة في عيادة كيربوت الطبية.
-# تقومين بإجراء مكالمة استشارية ما قبل الزيارة لجمع المعلومات الطبية.
+You are Mariam, a friendly receptionist at CareBot Clinic.
+You're conducting a pre-visit consultation call to gather medical information.
 
 Style Guidelines:
 - Keep responses SHORT (1-2 sentences maximum)
 - Ask ONE question at a time  
 - Show empathy and understanding
 - Natural conversational tone
-- Respond in English (or Arabic if patient uses Arabic)
+- IMPORTANT: Respond in the SAME language the patient uses
+  - If patient speaks Arabic → respond in Arabic
+  - If patient speaks English → respond in English
 
 Required Information to Collect:
-1. Chief complaint
-2. Duration
-3. Pain severity 1-10
-4. Location
-5. Triggers
-6. Current medications
-7. Allergies
-8. Medical conditions
+1. Chief complaint (الشكوى الرئيسية)
+2. Duration (المدة)
+3. Pain severity 1-10 (شدة الألم)
+4. Location (المكان)
+5. Triggers (المحفزات)
+6. Current medications (الأدوية الحالية)
+7. Allergies (الحساسية)
+8. Medical conditions (الأمراض)
 
 Important:
 - If diabetes + dental infection → high priority
@@ -91,22 +93,17 @@ def speak(text: str, lang: str = "ar"):
     try:
         print(f"\n🔊 Agent: {text}")
         
-        # Detect language if mixed
-        # Simple heuristic: if contains Arabic characters, use Arabic
+        # Auto-detect language based on text content
         import re
         has_arabic = bool(re.search('[\u0600-\u06FF]', text))
         
-        # Default to English
-        # if has_arabic:
-        #     tld = 'com'  # Google.com for Arabic
-        #     lang = 'ar'
-        # else:
-        #     tld = 'com'
-        #     lang = 'en'
-        
-        # Force English for now
-        tld = 'com'
-        lang = 'en'
+        # Set language based on content
+        if has_arabic:
+            tld = 'com'  # Google.com for Arabic
+            lang = 'ar'
+        else:
+            tld = 'com'
+            lang = 'en'
         
         # Generate speech using gTTS
         tts = gTTS(text=text, lang=lang, slow=False, tld=tld)
@@ -160,24 +157,23 @@ def listen() -> Tuple[Optional[str], Optional[str]]:
         
         print("   ⏳ Processing speech...")
         
-        # Try English first
-        # Try Arabic first
-        # try:
-        #     text = recognizer.recognize_google(audio, language="ar-EG")  # type: ignore
-        #     print(f"   ✓ Detected: Arabic")
-        #     return text, "ar"
-        # except:
-        #     # Try English
+        # Try Arabic first (Egyptian Arabic)
         try:
-            text = recognizer.recognize_google(audio, language="en-US")  # type: ignore
-            print(f"   ✓ Detected: English")
-            return text, "en"
-        except sr.UnknownValueError:
-            print("   ⚠ Could not understand audio")
-            return None, None
-        except sr.RequestError as e:
-            print(f"   ✗ Service error: {e}")
-            return None, None
+            text = recognizer.recognize_google(audio, language="ar-EG")  # type: ignore
+            print(f"   ✓ Detected: Arabic")
+            return text, "ar"
+        except:
+            # Fallback to English
+            try:
+                text = recognizer.recognize_google(audio, language="en-US")  # type: ignore
+                print(f"   ✓ Detected: English")
+                return text, "en"
+            except sr.UnknownValueError:
+                print("   ⚠ Could not understand audio")
+                return None, None
+            except sr.RequestError as e:
+                print(f"   ✗ Service error: {e}")
+                return None, None
                 
     except KeyboardInterrupt:
         print("\n   ⚠ Interrupted by user")
@@ -471,14 +467,12 @@ def run_voice_agent():
     # Start conversation
     print("\n✓ Ready! Starting conversation...\n")
     print("💡 Microphone will auto-detect when you speak")
-    print("💡 Speak clearly in English")
-    # print("💡 Speak clearly in Arabic or English")
-    print("💡 Say 'goodbye' or 'bye' to exit")
-    # print("💡 Say 'goodbye' or 'مع السلامة' to exit")
+    print("💡 Speak clearly in Arabic or English")
+    print("💡 Say 'goodbye' or 'مع السلامة' to exit")
     print("💡 Press Ctrl+C to force stop\n")
 
-    # speak("صباح الخير! أنا مريم من عيادة كيربوت. كيف حالك النهاردة؟", "ar")
-    speak("Good morning! I'm Mariam from CareBot Clinic. How are you doing today?", "en")
+    # Bilingual greeting (Arabic)
+    speak("صباح الخير! أنا مريم من عيادة كيربوت. كيف حالك النهاردة؟", "ar")
 
     # Main conversation loop
     turn = 0
@@ -490,12 +484,11 @@ def run_voice_agent():
         if user_text:
             print(f"\n👤 You: {user_text}")
             
-            # Check for exit
+            # Check for exit (Arabic and English keywords)
             user_lower = user_text.lower()
-            # if any(word in user_lower for word in ["goodbye", "bye", "مع السلامة", "وداعا", "exit", "stop", "end"]):
-            if any(word in user_lower for word in ["goodbye", "bye", "exit", "stop", "end"]):
-                # speak("شكراً جداً! ربنا يشفيك ومع السلامة!", "ar")
-                speak("Thank you very much! Take care and goodbye!", "en")
+            if any(word in user_lower for word in ["goodbye", "bye", "مع السلامة", "وداعا", "exit", "stop", "end", "خلاص", "شكرا"]):
+                # Bilingual farewell
+                speak("شكراً جداً! ربنا يشفيك ومع السلامة!", "ar")
                 break
             
             # Get AI response
