@@ -93,5 +93,52 @@ output/
 - Medical conditions
 
 ## License
+## 🎯 Conversation Flow
+
+```
+GREETING → Build rapport
+    ↓
+DISCOVERY → Collect data naturally
+    ↓
+COMPLETION → Verify information
+    ↓
+CLOSING → Thank and confirm
+```
+
+## 🚦 Patient Routing
+
+Automatic specialist assignment:
+- **Endodontist** - Root canal, pulp issues
+- **Periodontist** - Gum disease
+- **Oral Surgeon** - Extractions, trauma
+- **Emergency** - Severity ≥8, fever+swelling
+
+## 🔐 Environment Variables
+
+Create `.env` file:
+
+```env
+OPENAI_API_KEY=sk-your-key-here
+ENVIRONMENT=development
+LOG_LEVEL=INFO
+```
+
+## 🧪 Testing
+
+```powershell
+# Test PDF generation
+python generate_pdf_summary.py --output-dir output
+
+# Test microphone
+python tests/test_mic_live.py
+```
+
+
+
+## 👥 Authors
+
+(Veeresh S K)EnsanAI Team
+
+---
 
 Proprietary - CareBot Clinic
