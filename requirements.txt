@@ -1,18 +1,26 @@
-"""
-Lean requirements for the free voice agent + PDF summaries.
-If you need Whisper or Coqui XTTS, install those separately.
-"""
+# Production Voice Agent Requirements
 
+# Core
 python-dotenv>=1.0.0
 openai>=1.12.0
 
-# Voice (free stack)
-gTTS>=2.3.0
+# Speech Recognition (STT) - High Accuracy
 SpeechRecognition>=3.10.0
 PyAudio>=0.2.11
+openai-whisper>=20231117  # Accurate multilingual STT
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# Audio Processing
+numpy>=1.24.0
+soundfile>=0.12.0
+noisereduce>=3.0.0  # Audio noise reduction
 pygame>=2.5.0
 
-# Data + summaries
+# Text-to-Speech
+cartesia>=1.0.0  # Cartesia TTS with natural multilingual voices
+
+# Data Processing
 pydantic>=2.6.0
 python-dateutil>=2.8.0
 fpdf2>=2.7.0

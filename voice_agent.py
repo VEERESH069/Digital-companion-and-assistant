@@ -1,9 +1,9 @@
 """
-Voice Agent - Google TTS (gTTS)
-================================
+Voice Agent - Cartesia TTS
+===========================
 
 Uses:
-- gTTS (Google Text-to-Speech)
+- Cartesia (Natural multilingual Text-to-Speech)
 - Google Speech Recognition
 - GPT-4o mini
 
@@ -22,13 +22,14 @@ import io
 import json
 import tempfile
 import uuid
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Tuple
 import speech_recognition as sr
 from openai import OpenAI
 from dotenv import load_dotenv
-from gtts import gTTS
+from cartesia import Cartesia
 import pygame
 
 # Load environment
@@ -40,6 +41,19 @@ if not os.getenv("OPENAI_API_KEY"):
     sys.exit(1)
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# Initialize Cartesia client
+cartesia_client = None
+if os.getenv("CARTESIA_API_KEY"):
+    try:
+        cartesia_client = Cartesia(api_key=os.getenv("CARTESIA_API_KEY"))
+        print("✅ Cartesia TTS initialized")
+    except Exception as e:
+        print(f"⚠ Cartesia initialization failed: {e}")
+        sys.exit(1)
+else:
+    print("❌ ERROR: CARTESIA_API_KEY not set in .env file")
+    sys.exit(1)
 
 # Output directory for JSON and PDFs
 OUTPUT_DIR = Path(__file__).parent / "output"
@@ -84,7 +98,7 @@ Important:
 
 def speak(text: str, lang: str = "ar"):
     """
-    Speak text using Google TTS
+    Speak text using Cartesia TTS
     
     Args:
         text: Text to speak
@@ -94,26 +108,35 @@ def speak(text: str, lang: str = "ar"):
         print(f"\n🔊 Agent: {text}")
         
         # Auto-detect language based on text content
-        import re
         has_arabic = bool(re.search('[\u0600-\u06FF]', text))
+        language = "ar" if has_arabic else "en"
+        voice_id = "6ccbfb76-1fc6-48f7-b71d-91ac6298247b"  # Multilingual voice
         
-        # Set language based on content
-        if has_arabic:
-            tld = 'com'  # Google.com for Arabic
-            lang = 'ar'
-        else:
-            tld = 'com'
-            lang = 'en'
-        
-        # Generate speech using gTTS
-        tts = gTTS(text=text, lang=lang, slow=False, tld=tld)
-        
-        # Save to temporary file
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+        # Generate speech using Cartesia
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
         temp_path = temp_file.name
         temp_file.close()
         
-        tts.save(temp_path)
+        with open(temp_path, "wb") as f:
+            output_format = {
+                "container": "wav",
+                "sample_rate": 44100,
+                "encoding": "pcm_s16le",
+            }
+            
+            bytes_iter = cartesia_client.tts.bytes(
+                model_id="sonic-3",
+                transcript=text,
+                voice={
+                    "mode": "id",
+                    "id": voice_id,
+                },
+                language=language,
+                output_format=output_format,  # type: ignore
+            )
+            
+            for chunk in bytes_iter:
+                f.write(chunk)
         
         # Play audio
         pygame.mixer.music.load(temp_path)
@@ -190,7 +213,7 @@ def get_response(user_message: str) -> str:
         
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=conversation_history,
+            messages=conversation_history,  # type: ignore
             temperature=0.7,
             max_tokens=100
         )
@@ -524,8 +547,8 @@ def run_voice_agent():
 if __name__ == "__main__":
     # Initialize audio components only when running directly
     print("=" * 70)
-    print("VOICE AGENT - Google TTS")
-    print("Powered by: gTTS + GPT-4o mini")
+    print("VOICE AGENT - Cartesia TTS")
+    print("Powered by: Cartesia + GPT-4o mini")
     print("=" * 70)
     
     recognizer = sr.Recognizer()
@@ -533,3 +556,6 @@ if __name__ == "__main__":
     pygame.mixer.init()
     
     run_voice_agent()
+
+
+

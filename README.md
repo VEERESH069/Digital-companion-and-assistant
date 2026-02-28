@@ -1,156 +1,97 @@
-# Pre-Visit Real-Time Voice Agent
+# Production Voice Agent for Medical Pre-Visit Consultations
 
-A scalable, AI-powered conversational voice agent for dental clinics that automates pre-visit patient intake calls in Egyptian Arabic and English.
+AI-powered voice agent for automated patient intake in Arabic, English, and Hindi.
 
-## 🎯 Key Features
+## Features
 
-- **Real-time Speech Recognition** - Whisper/Google Speech Recognition
-- **Natural Voice Synthesis** - XTTS v2 / Google TTS
-- **Intelligent Conversations** - GPT-4o mini with Egyptian Arabic awareness
-- **Clinical Data Extraction** - Structured patient data with confidence scores
-- **PDF Summary Generation** - Doctor briefing and patient copy
-- **Automatic Routing** - Specialist assignment based on symptoms
+- **High Accuracy STT** - Whisper model with noise reduction
+- **Natural Voice** - OpenAI TTS (professional quality)
+- **Interrupt Detection** - Agent stops when patient speaks
+- **Clinical Data Extraction** - Structured JSON + PDF reports
+- **Multilingual** - Arabic, English, Hindi with auto-detection
 
-## 🚀 Quick Start
+## Quick Start
 
-### Prerequisites
+```powershell
+# Install
+pip install -r requirements.txt
+
+# Setup .env file
+OPENAI_API_KEY=your_key_here
+
+# Run
+python voice_agent_production.py
+```
+
+## Configuration
+
+Edit `config.py`:
+
+```python
+# STT Accuracy
+STT_ENGINE = "whisper"        # High accuracy
+WHISPER_MODEL = "base"        # tiny, base, small, medium
+ENABLE_NOISE_REDUCTION = True
+
+# Voice
+TTS_VOICE = "nova"            # Natural female voice
+TTS_SPEED = 1.0
+
+# Features
+ENABLE_INTERRUPT_DETECTION = True
+ADD_NATURAL_PAUSES = True
+```
+
+## Usage
+
+1. Run: `python voice_agent_production.py`
+2. Speak clearly when prompted
+3. Say "goodbye" to end consultation
+4. Check `output/` for JSON and PDF files
+
+## Files
+
+- `voice_agent_production.py` - Main production agent
+- `config.py` - Configuration settings
+- `voice_agent.py` - Original version (backup)
+
+## Requirements
 
 - Python 3.9+
 - Microphone
 - OpenAI API key
-- Internet connection
+- ~500MB RAM
 
-### Installation
+## Troubleshooting
 
-```powershell
-# 1. Create virtual environment
-python -m venv venv
-.\venv\Scripts\activate
+**STT not accurate?**
+- Increase accuracy: `WHISPER_MODEL = "small"`
+- Enable noise reduction: `ENABLE_NOISE_REDUCTION = True`
 
-# 2. Install dependencies
-pip install -r requirements.txt
+**Too slow?**
+- Use faster model: `WHISPER_MODEL = "tiny"`
+- Or: `STT_ENGINE = "google"`
 
-# 3. Setup environment
-copy .env.example .env
-# Edit .env and add your OPENAI_API_KEY
-
-# 4. Run the voice agent
-python voice_agent.py
-```
-
-## 📖 Documentation
-
-See [docs/PROJECT_DOCUMENTATION.md](docs/PROJECT_DOCUMENTATION.md) for complete technical documentation.
-
-## 🏗️ Architecture
+## Output Structure
 
 ```
-Layer 1: Voice Infrastructure (STT + TTS)
-    ↓
-Layer 2: Conversational AI (LLM + State Machine)
-    ↓
-Layer 3: Data Extraction (Real-time + Post-call)
-    ↓
-Layer 4: Output (PDF Generation + Routing)
+output/
+├── clinical_payload_CONV-YYYY-MM-DD-XXXXXX.json
+├── doctor_briefing_CONV-YYYY-MM-DD-XXXXXX.pdf
+└── patient_copy_CONV-YYYY-MM-DD-XXXXXX.pdf
 ```
 
-## 📁 Project Structure
+## Data Collected
 
-```
-.
-├── src/
-│   └── pre_visit_agent/
-│       ├── config/            # Configuration management
-│       ├── services/          # STT, TTS, LLM services
-│       └── core/              # Conversation & data extraction
-├── generate_pdf_summary.py    # PDF generation
-├── voice_agent.py             # Main voice agent
-├── requirements.txt           # Dependencies
-└── docs/                      # Documentation
-```
-
-## 🔧 Usage Example
-
-```python
-from voice_agent import VoiceAgent
-
-# Initialize
-agent = VoiceAgent()
-
-# Start session
-session_id = agent.start_session(patient_id="P12345")
-
-# End session and get summary
-summary = agent.end_session(session_id)
-print(f"Specialist: {summary.recommended_specialist}")
-print(f"Urgency: {summary.urgency_level}")
-```
-
-### Generate PDF Summaries
-
-```powershell
-python generate_pdf_summary.py --output-dir output
-```
-
-## 📝 Data Collected
-
-- Chief complaint (dental issue)
+- Chief complaint
 - Duration
 - Severity (1-10)
-- Location (tooth/area)
+- Location
 - Triggers
 - Current medications
 - Allergies
 - Medical conditions
 
-## 🎯 Conversation Flow
+## License
 
-```
-GREETING → Build rapport
-    ↓
-DISCOVERY → Collect data naturally
-    ↓
-COMPLETION → Verify information
-    ↓
-CLOSING → Thank and confirm
-```
-
-## 🚦 Patient Routing
-
-Automatic specialist assignment:
-- **Endodontist** - Root canal, pulp issues
-- **Periodontist** - Gum disease
-- **Oral Surgeon** - Extractions, trauma
-- **Emergency** - Severity ≥8, fever+swelling
-
-## 🔐 Environment Variables
-
-Create `.env` file:
-
-```env
-OPENAI_API_KEY=sk-your-key-here
-ENVIRONMENT=development
-LOG_LEVEL=INFO
-```
-
-## 🧪 Testing
-
-```powershell
-# Test PDF generation
-python generate_pdf_summary.py --output-dir output
-
-# Test microphone
-python tests/test_mic_live.py
-```
-
-
-
-## 👥 Authors
-
-EnsanAI Team
-
----
-
-**Version:** 1.0.0  
-**Last Updated:** January 2026  
-**Python:** 3.9+
+Proprietary - CareBot Clinic
