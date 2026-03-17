@@ -81,7 +81,9 @@ Style Guidelines:
 - Keep responses SHORT (1-2 sentences maximum)
 - Ask ONE question at a time  
 - Show empathy and understanding
-- Natural conversational tone
+- Speak calmly, warmly, and naturally like a human receptionist
+- Speak slowly and clearly, never rushed
+- Use natural conversational tone with gentle punctuation and short pauses
 - Add appropriate pauses with punctuation (. , ! ?)
 - Respond in the SAME language the patient uses
 
@@ -101,6 +103,7 @@ Important:
         ]
         self.turn_count = 0
         self.assistant_turn_events: List[Dict[str, Any]] = []
+        self.preferred_language = "en"
     
     def add_user_message(self, message: str):
         """Add user message to history"""
@@ -114,6 +117,31 @@ Important:
     def get_history(self):
         """Get conversation history"""
         return self.history
+
+    def set_preferred_language(self, language_code: Optional[str]):
+        """Persist the user's preferred reply language for future turns."""
+        normalized = config.normalize_language_code(language_code)
+        if normalized in {"ar", "en", "hi"}:
+            self.preferred_language = normalized
+
+    def get_history_for_response(self):
+        """Get prompt history with a strong reminder to answer in the selected language."""
+        language_names = {
+            "ar": "Arabic",
+            "en": "English",
+            "hi": "Hindi",
+        }
+        language_name = language_names.get(self.preferred_language, "English")
+        return self.history + [
+            {
+                "role": "system",
+                "content": (
+                    f"Respond only in {language_name}. "
+                    f"If the user asks to switch languages, comply immediately and continue in {language_name}. "
+                    f"Speak calmly, slowly, and clearly with short natural sentences and gentle pauses."
+                ),
+            }
+        ]
     
     def is_complete(self) -> bool:
         """Check if conversation should end"""
@@ -141,7 +169,7 @@ Important:
 class TTSEngine:
     """TTS Engine — streams raw PCM directly via PyAudio for minimum latency"""
 
-    SAMPLE_RATE = 22050
+    SAMPLE_RATE = int(config.CARTESIA_OUTPUT_FORMAT.get("sample_rate", 44100))
     CHANNELS = 1
     CHUNK = 1024
 
@@ -158,10 +186,53 @@ class TTSEngine:
             stream.stop_stream()
         except Exception:
             pass
+
+    def _write_silence(self, stream: Any, duration_seconds: float):
+        """Write a short block of silence to avoid abrupt audio cutoffs."""
+        if stream is None or duration_seconds <= 0:
+            return
+        frame_count = max(1, int(self.SAMPLE_RATE * duration_seconds))
+        silence = b"\x00\x00" * frame_count
+        self._write_audio_chunk(stream, silence)
+
+    @staticmethod
+    def _write_audio_chunk(stream: Any, chunk: bytes) -> bool:
+        """Write PCM to the output stream without letting device errors crash the app."""
+        if stream is None:
+            return False
+        try:
+            stream.write(chunk)
+            return True
+        except OSError as exc:
+            print(f"   ⚠ Audio playback interrupted: {exc}")
+            return False
+        except Exception as exc:
+            print(f"   ⚠ Audio playback failed: {exc}")
+            return False
         try:
             stream.close()
         except Exception:
             pass
+
+    @staticmethod
+    def _flush_output_stream(stream: Any):
+        """Give the audio backend time to drain buffered PCM before closing."""
+        if stream is None:
+            return
+        try:
+            latency = float(stream.get_output_latency())
+        except Exception:
+            latency = 0.0
+        if latency > 0:
+            time.sleep(min(max(latency, 0.05), 0.5))
+
+    @staticmethod
+    def _iter_cartesia_sse(**kwargs: Any):
+        """Use the current Cartesia streaming API while remaining compatible with older SDKs."""
+        tts_api = cartesia_client.tts  # type: ignore[union-attr]
+        if hasattr(tts_api, "generate_sse"):
+            return tts_api.generate_sse(**kwargs)
+        return tts_api.sse(**kwargs)
 
     def _monitor_interrupt(self, interrupt_requested: threading.Event, playback_done: threading.Event):
         """Background monitor: raises interrupt_requested when user speech is detected."""
@@ -169,9 +240,12 @@ class TTSEngine:
         stream: Any = None
         warmup_ms = int(getattr(config, "INTERRUPT_WARMUP_MS", 250))
         consecutive_required = int(getattr(config, "INTERRUPT_CONSECUTIVE_FRAMES", 2))
+        baseline_multiplier = float(getattr(config, "INTERRUPT_BASELINE_MULTIPLIER", 2.2))
+        peak_threshold = int(getattr(config, "INTERRUPT_PEAK_THRESHOLD", 2600))
         warmup_seconds = max(0, warmup_ms) / 1000.0
         start_time = time.monotonic()
         high_frames = 0
+        warmup_rms_values: List[float] = []
 
         try:
             mon = pyaudio.PyAudio()
@@ -195,12 +269,21 @@ class TTSEngine:
                     if not samples:
                         continue
 
+                    peak = max(abs(sample) for sample in samples)
+                    rms = (sum(s * s for s in samples) / len(samples)) ** 0.5
+
                     # Ignore early speaker bleed right after playback begins.
                     if (time.monotonic() - start_time) < warmup_seconds:
+                        warmup_rms_values.append(rms)
                         continue
 
-                    rms = (sum(s * s for s in samples) / len(samples)) ** 0.5
-                    if rms > config.INTERRUPT_ENERGY_THRESHOLD:
+                    ambient_rms = max(warmup_rms_values) if warmup_rms_values else 0.0
+                    adaptive_threshold = max(
+                        float(config.INTERRUPT_ENERGY_THRESHOLD),
+                        ambient_rms * baseline_multiplier,
+                    )
+
+                    if rms > adaptive_threshold and peak > peak_threshold:
                         high_frames += 1
                         if high_frames >= max(1, consecutive_required):
                             interrupt_requested.set()
@@ -217,7 +300,12 @@ class TTSEngine:
                 except Exception:
                     pass
 
-    def speak_cartesia(self, text: str) -> bool:
+    def speak_cartesia(
+        self,
+        text: str,
+        language_code: Optional[str] = None,
+        allow_interrupt: bool = True,
+    ) -> bool:
         """Stream Cartesia raw PCM straight to speakers — zero file I/O, first sound in ~100ms"""
         global cartesia_client
 
@@ -231,7 +319,7 @@ class TTSEngine:
         playback_done = threading.Event()
 
         try:
-            language = config.detect_tts_language(text)
+            language = config.normalize_language_code(language_code) if language_code else config.detect_tts_language(text)
             voice_id = config.get_cartesia_voice_id(language)
             cache_key = f"{text}_{language}_{voice_id}"
 
@@ -239,7 +327,7 @@ class TTSEngine:
                 format=pyaudio.paInt16, channels=self.CHANNELS,
                 rate=self.SAMPLE_RATE, output=True, frames_per_buffer=self.CHUNK
             )
-            if config.ENABLE_INTERRUPT_DETECTION:
+            if config.ENABLE_INTERRUPT_DETECTION and allow_interrupt:
                 interrupt_thread = threading.Thread(
                     target=self._monitor_interrupt,
                     args=(interrupt_requested, playback_done),
@@ -253,13 +341,15 @@ class TTSEngine:
                 for i in range(0, len(pcm), self.CHUNK * 2):
                     if interrupt_requested.is_set():
                         break
-                    out.write(pcm[i:i + self.CHUNK * 2])
+                    if not self._write_audio_chunk(out, pcm[i:i + self.CHUNK * 2]):
+                        interrupted = True
+                        break
             else:
                 # --- Live stream via SSE: pipe chunks straight to speakers ---
                 from cartesia.types.sse_events import ChunkEvent  # type: ignore
                 pcm_buffer = b""
                 interrupted = False
-                for event in cartesia_client.tts.sse(  # type: ignore
+                for event in self._iter_cartesia_sse(
                     model_id=config.CARTESIA_MODEL,
                     transcript=text,
                     voice={"mode": "id", "id": voice_id},
@@ -272,7 +362,9 @@ class TTSEngine:
                         interrupted = True
                         break
                     if isinstance(event, ChunkEvent) and event.audio:
-                        out.write(event.audio)
+                        if not self._write_audio_chunk(out, event.audio):
+                            interrupted = True
+                            break
                         if config.ENABLE_TTS_CACHING:
                             pcm_buffer += event.audio
 
@@ -280,6 +372,9 @@ class TTSEngine:
                     self.cache[cache_key] = pcm_buffer
 
             interrupted = interrupt_requested.is_set()
+
+            if not interrupted:
+                self._write_silence(out, float(getattr(config, "TTS_TAIL_SILENCE_SEC", 0.2)))
 
             if interrupted:
                 print("   ✋ User interrupted — listening...")
@@ -291,13 +386,19 @@ class TTSEngine:
             return False
         finally:
             playback_done.set()
+            self._flush_output_stream(out)
             self._safe_stop_close_stream(out)
             if interrupt_thread is not None:
                 interrupt_thread.join(timeout=0.3)
 
-    def speak(self, text: str) -> bool:
+    def speak(
+        self,
+        text: str,
+        language_code: Optional[str] = None,
+        allow_interrupt: bool = True,
+    ) -> bool:
         print(f"\n🔊 Agent: {text}")
-        return self.speak_cartesia(text)
+        return self.speak_cartesia(text, language_code=language_code, allow_interrupt=allow_interrupt)
 
     def _fetch_pcm_to_queue(self, text: str, pcm_q: 'queue.Queue[Any]') -> None:
         """Fetch Cartesia SSE audio for `text` and push raw PCM chunks into pcm_q.
@@ -317,7 +418,7 @@ class TTSEngine:
                 return
 
             pcm_buffer = b""
-            for event in cartesia_client.tts.sse(  # type: ignore
+            for event in self._iter_cartesia_sse(
                 model_id=config.CARTESIA_MODEL,
                 transcript=text,
                 voice={"mode": "id", "id": voice_id},
@@ -349,6 +450,7 @@ class TTSEngine:
         playback_done = threading.Event()
 
         interrupted = False
+        playback_failed = False
         try:
             out = self._pa.open(
                 format=pyaudio.paInt16, channels=self.CHANNELS,
@@ -373,6 +475,11 @@ class TTSEngine:
                     delivered_text = str(chunk.get("text", "")).strip()
                     if delivered_text:
                         delivered_sentences.append(delivered_text)
+                        if config.ADD_NATURAL_PAUSES:
+                            pause_duration = float(getattr(config, "PAUSE_AFTER_SENTENCE", 0.3))
+                            if delivered_text.endswith("?") or delivered_text.endswith("؟"):
+                                pause_duration = float(getattr(config, "PAUSE_AFTER_QUESTION", 0.5))
+                            self._write_silence(out, pause_duration)
                     continue
                 if interrupt_requested.is_set():
                     interrupted = True
@@ -383,15 +490,25 @@ class TTSEngine:
                         except Exception:
                             break
                     break
-                out.write(chunk)
+                if not isinstance(chunk, (bytes, bytearray)):
+                    continue
+                if not self._write_audio_chunk(out, bytes(chunk)):
+                    playback_failed = True
+                    break
+
+            if not interrupted and not playback_failed:
+                self._write_silence(out, float(getattr(config, "TTS_TAIL_SILENCE_SEC", 0.2)))
         finally:
             playback_done.set()
+            self._flush_output_stream(out)
             self._safe_stop_close_stream(out)
             if interrupt_thread is not None:
                 interrupt_thread.join(timeout=0.3)
 
         if interrupted:
             print("   ✋ User interrupted — listening...")
+        elif playback_failed:
+            print("   ⚠ Audio output stream closed unexpectedly.")
         return interrupted, delivered_sentences
 
 
@@ -528,7 +645,7 @@ class LLMEngine:
                 print("   🧠 Thinking...", end="", flush=True)
                 stream = client.chat.completions.create(
                     model=config.LLM_MODEL,
-                    messages=conversation.get_history(),  # type: ignore
+                    messages=conversation.get_history_for_response(),  # type: ignore
                     temperature=config.LLM_TEMPERATURE,
                     max_tokens=config.LLM_MAX_TOKENS_RESPONSE,
                     stream=True
@@ -618,7 +735,7 @@ class LLMEngine:
             
             response = client.chat.completions.create(
                 model=config.LLM_MODEL,
-                messages=conversation.get_history(),  # type: ignore
+                messages=conversation.get_history_for_response(),  # type: ignore
                 temperature=config.LLM_TEMPERATURE,
                 max_tokens=config.LLM_MAX_TOKENS_RESPONSE
             )
@@ -845,6 +962,34 @@ def check_exit_intent(text: str) -> bool:
     return any(keyword in text_lower for keyword in config.EXIT_KEYWORDS)
 
 
+def get_prompt_text(prompt_key: str, language_code: Optional[str]) -> str:
+    """Return fixed prompts in one language so TTS pronunciation stays consistent."""
+    language = config.normalize_language_code(language_code)
+    prompts = {
+        "greeting": {
+            "ar": "صباح الخير. أنا مريم من عيادة كيربوت. كيف حالك النهاردة؟",
+            "en": "Good morning. I'm Mariam from CareBot Clinic. How are you today?",
+            "hi": "नमस्ते। मैं केयरबॉट क्लिनिक से मरियम बोल रही हूँ। आप आज कैसे हैं?",
+        },
+        "silence_first": {
+            "ar": "هل أنت هناك؟ خذ وقتك، أنا معك.",
+            "en": "Are you still there? Take your time, I'm here.",
+            "hi": "क्या आप अभी भी वहाँ हैं? आराम से बोलिए, मैं सुन रही हूँ।",
+        },
+        "silence_repeat": {
+            "ar": "لم أسمعك. من فضلك تكلم عندما تكون جاهزاً.",
+            "en": "I didn't hear anything. Please speak when you're ready.",
+            "hi": "मुझे आपकी आवाज़ नहीं सुनाई दी। जब आप तैयार हों तब बोलिए।",
+        },
+        "farewell": {
+            "ar": "شكراً لاتصالك. مع السلامة وأتمنى لك الشفاء العاجل.",
+            "en": "Thank you for calling. Goodbye. Get well soon.",
+            "hi": "कॉल करने के लिए धन्यवाद। अलविदा, और जल्द ठीक हो जाइए।",
+        },
+    }
+    return prompts[prompt_key].get(language, prompts[prompt_key]["en"])
+
+
 def run_voice_agent():
     """Main conversation loop"""
     global recognizer, microphone
@@ -875,8 +1020,8 @@ def run_voice_agent():
     print(f"\n💡 Say goodbye to exit\n")
     
     # Greeting
-    greeting = "صباح الخير! مرحباً! I'm Mariam from CareBot Clinic. كيف حالك النهاردة؟"
-    tts_engine.speak(greeting)
+    greeting = get_prompt_text("greeting", conversation.preferred_language)
+    tts_engine.speak(greeting, language_code=conversation.preferred_language, allow_interrupt=False)
     conversation.add_assistant_message(greeting)
     
     # Main loop
@@ -889,22 +1034,25 @@ def run_voice_agent():
         if user_text == "__silence__":
             silence_count += 1
             if silence_count == 1:
-                tts_engine.speak("هل أنت هناك؟ Are you still there? Take your time.")
+                prompt = get_prompt_text("silence_first", conversation.preferred_language)
+                tts_engine.speak(prompt, language_code=conversation.preferred_language, allow_interrupt=False)
             else:
-                tts_engine.speak("لم أسمعك. I didn't hear anything — please speak when you're ready.")
+                prompt = get_prompt_text("silence_repeat", conversation.preferred_language)
+                tts_engine.speak(prompt, language_code=conversation.preferred_language, allow_interrupt=False)
                 silence_count = 0
             continue
         
         if not user_text:
             continue
         
+        conversation.set_preferred_language(lang)
         silence_count = 0
         print(f"\n👤 Patient: {user_text}")
         
         # Check exit intent
         if check_exit_intent(user_text):
-            farewell = "شكراً جداً! Thank you for calling. ربنا يشفيك! Get well soon!"
-            tts_engine.speak(farewell)
+            farewell = get_prompt_text("farewell", conversation.preferred_language)
+            tts_engine.speak(farewell, language_code=conversation.preferred_language, allow_interrupt=False)
             break
         
         # Stream LLM response — first sentence spoken the moment it's ready

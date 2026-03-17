@@ -120,14 +120,17 @@ MAX_CONVERSATION_TURNS = 15
 # Interrupt Detection
 ENABLE_INTERRUPT_DETECTION = True
 INTERRUPT_CHECK_INTERVAL = 0.05   # How often to check for interrupt (seconds)
-INTERRUPT_ENERGY_THRESHOLD = 800  # RMS energy level to trigger interrupt (tune if needed)
-INTERRUPT_WARMUP_MS = 250  # Ignore early mic bleed right after playback starts (milliseconds)
-INTERRUPT_CONSECUTIVE_FRAMES = 2  # Frames above threshold required before triggering interrupt
+INTERRUPT_ENERGY_THRESHOLD = 1400  # Minimum RMS energy level to trigger interrupt
+INTERRUPT_WARMUP_MS = 700  # Ignore early mic bleed right after playback starts (milliseconds)
+INTERRUPT_CONSECUTIVE_FRAMES = 4  # Frames above threshold required before triggering interrupt
+INTERRUPT_BASELINE_MULTIPLIER = 2.2  # Adaptive multiplier over ambient RMS during playback
+INTERRUPT_PEAK_THRESHOLD = 2600  # Peak sample magnitude required to treat audio as speech-like
 
 # Natural Speech Settings
 ADD_NATURAL_PAUSES = True  # Add human-like pauses in speech
-PAUSE_AFTER_SENTENCE = 0.3  # Seconds to pause after each sentence
-PAUSE_AFTER_QUESTION = 0.5  # Seconds to pause after questions
+PAUSE_AFTER_SENTENCE = 0.75  # Seconds to pause after each sentence
+PAUSE_AFTER_QUESTION = 1.0  # Seconds to pause after questions
+TTS_TAIL_SILENCE_SEC = 0.35  # Short silence after playback so final words are not clipped
 
 # Performance Settings
 ENABLE_TTS_CACHING = True  # Cache common phrases
