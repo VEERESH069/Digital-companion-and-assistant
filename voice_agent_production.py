@@ -1,14 +1,14 @@
 """
-Production Voice Agent - Optimized Pipeline
-===========================================
-Production-ready medical voice agent with:
+Production Voice Agent - Primary Runtime
+========================================
+Primary, production-ready medical voice agent with:
 - Low latency
 - Interrupt detection
 - Natural speech pauses
 - Optimal error handling
 - Clean architecture
 
-Run: python voice_agent_production.py
+Run (primary): python voice_agent_production.py
 """
 
 import os
@@ -65,8 +65,6 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 # Global state
 recognizer: Optional[sr.Recognizer] = None
 microphone: Optional[sr.Microphone] = None
-user_is_speaking = False  # Flag for interrupt detection
-stop_speaking = False  # Signal to stop current speech
 
 
 class ConversationManager:
@@ -102,6 +100,7 @@ Important:
 - Note allergies for treatment planning"""}
         ]
         self.turn_count = 0
+        self.assistant_turn_events: List[Dict[str, Any]] = []
     
     def add_user_message(self, message: str):
         """Add user message to history"""
@@ -120,6 +119,24 @@ Important:
         """Check if conversation should end"""
         return self.turn_count >= config.MAX_CONVERSATION_TURNS
 
+    def add_assistant_turn_event(
+        self,
+        generated_text: str,
+        played_text: str,
+        interrupted: bool,
+        completed: bool,
+    ):
+        """Track assistant turn delivery state for observability/debugging."""
+        self.assistant_turn_events.append(
+            {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "generated_text": generated_text,
+                "played_text": played_text,
+                "interrupted": interrupted,
+                "completed": completed,
+            }
+        )
+
 
 class TTSEngine:
     """TTS Engine — streams raw PCM directly via PyAudio for minimum latency"""
@@ -132,61 +149,109 @@ class TTSEngine:
         self.cache: Dict[str, bytes] = {}  # caches raw PCM bytes
         self._pa = pyaudio.PyAudio()
 
-    def _monitor_interrupt(self):
-        """Background thread: listens on mic while TTS plays; sets stop_speaking on voice"""
-        global stop_speaking
+    @staticmethod
+    def _safe_stop_close_stream(stream: Any):
+        """Best-effort stream cleanup to avoid device-busy leaks after exceptions."""
+        if stream is None:
+            return
+        try:
+            stream.stop_stream()
+        except Exception:
+            pass
+        try:
+            stream.close()
+        except Exception:
+            pass
+
+    def _monitor_interrupt(self, interrupt_requested: threading.Event, playback_done: threading.Event):
+        """Background monitor: raises interrupt_requested when user speech is detected."""
+        mon: Optional[pyaudio.PyAudio] = None
+        stream: Any = None
+        warmup_ms = int(getattr(config, "INTERRUPT_WARMUP_MS", 250))
+        consecutive_required = int(getattr(config, "INTERRUPT_CONSECUTIVE_FRAMES", 2))
+        warmup_seconds = max(0, warmup_ms) / 1000.0
+        start_time = time.monotonic()
+        high_frames = 0
+
         try:
             mon = pyaudio.PyAudio()
             stream = mon.open(
                 format=pyaudio.paInt16, channels=1, rate=16000,
                 input=True, frames_per_buffer=512
             )
-            while not stop_speaking:
+        except OSError as e:
+            print(f"   ⚠ Interrupt monitor unavailable; continuing without barge-in: {e}")
+            return
+        except Exception as e:
+            print(f"   ⚠ Interrupt monitor failed to start; continuing playback: {e}")
+            return
+
+        try:
+            while not playback_done.is_set() and not interrupt_requested.is_set():
                 try:
                     data = stream.read(512, exception_on_overflow=False)
                     samples = [int.from_bytes(data[i:i+2], 'little', signed=True)
                                for i in range(0, len(data) - 1, 2)]
-                    if samples:
-                        rms = (sum(s * s for s in samples) / len(samples)) ** 0.5
-                        if rms > config.INTERRUPT_ENERGY_THRESHOLD:
-                            stop_speaking = True
+                    if not samples:
+                        continue
+
+                    # Ignore early speaker bleed right after playback begins.
+                    if (time.monotonic() - start_time) < warmup_seconds:
+                        continue
+
+                    rms = (sum(s * s for s in samples) / len(samples)) ** 0.5
+                    if rms > config.INTERRUPT_ENERGY_THRESHOLD:
+                        high_frames += 1
+                        if high_frames >= max(1, consecutive_required):
+                            interrupt_requested.set()
                             break
+                    else:
+                        high_frames = 0
                 except Exception:
                     break
-            stream.stop_stream()
-            stream.close()
-            mon.terminate()
-        except Exception:
-            pass
+        finally:
+            self._safe_stop_close_stream(stream)
+            if mon is not None:
+                try:
+                    mon.terminate()
+                except Exception:
+                    pass
 
     def speak_cartesia(self, text: str) -> bool:
         """Stream Cartesia raw PCM straight to speakers — zero file I/O, first sound in ~100ms"""
-        global stop_speaking, cartesia_client
-
-        stop_speaking = False
+        global cartesia_client
 
         if not CARTESIA_AVAILABLE or not cartesia_client:
             print("   ✗ Cartesia not available")
             return False
 
+        out: Any = None
+        interrupt_thread: Optional[threading.Thread] = None
+        interrupt_requested = threading.Event()
+        playback_done = threading.Event()
+
         try:
-            has_arabic = bool(re.search('[\u0600-\u06FF]', text))
-            language = "ar" if has_arabic else "en"
-            voice_id = config.CARTESIA_VOICE_ARABIC if has_arabic else config.CARTESIA_VOICE_ENGLISH
-            cache_key = f"{text}_{language}"
+            language = config.detect_tts_language(text)
+            voice_id = config.get_cartesia_voice_id(language)
+            cache_key = f"{text}_{language}_{voice_id}"
 
             out = self._pa.open(
                 format=pyaudio.paInt16, channels=self.CHANNELS,
                 rate=self.SAMPLE_RATE, output=True, frames_per_buffer=self.CHUNK
             )
-            interrupt_thread = threading.Thread(target=self._monitor_interrupt, daemon=True)
-            interrupt_thread.start()
+            if config.ENABLE_INTERRUPT_DETECTION:
+                interrupt_thread = threading.Thread(
+                    target=self._monitor_interrupt,
+                    args=(interrupt_requested, playback_done),
+                    daemon=True,
+                )
+                interrupt_thread.start()
 
             # --- Cached: replay stored PCM ---
             if config.ENABLE_TTS_CACHING and cache_key in self.cache:
                 pcm = self.cache[cache_key]
                 for i in range(0, len(pcm), self.CHUNK * 2):
-                    if stop_speaking:
+                    if interrupt_requested.is_set():
                         break
                     out.write(pcm[i:i + self.CHUNK * 2])
             else:
@@ -203,7 +268,7 @@ class TTSEngine:
                         "container": "raw", "sample_rate": self.SAMPLE_RATE, "encoding": "pcm_s16le"
                     },
                 ):
-                    if stop_speaking:
+                    if interrupt_requested.is_set():
                         interrupted = True
                         break
                     if isinstance(event, ChunkEvent) and event.audio:
@@ -214,13 +279,7 @@ class TTSEngine:
                 if not interrupted and config.ENABLE_TTS_CACHING and pcm_buffer:
                     self.cache[cache_key] = pcm_buffer
 
-            out.stop_stream()
-            out.close()
-
-            interrupted = stop_speaking
-            stop_speaking = True
-            interrupt_thread.join(timeout=0.3)
-            stop_speaking = False
+            interrupted = interrupt_requested.is_set()
 
             if interrupted:
                 print("   ✋ User interrupted — listening...")
@@ -230,26 +289,31 @@ class TTSEngine:
         except Exception as e:
             print(f"   ✗ Cartesia TTS error: {e}")
             return False
+        finally:
+            playback_done.set()
+            self._safe_stop_close_stream(out)
+            if interrupt_thread is not None:
+                interrupt_thread.join(timeout=0.3)
 
     def speak(self, text: str) -> bool:
         print(f"\n🔊 Agent: {text}")
         return self.speak_cartesia(text)
 
-    def _fetch_pcm_to_queue(self, text: str, pcm_q: 'queue.Queue[Optional[bytes]]') -> None:
+    def _fetch_pcm_to_queue(self, text: str, pcm_q: 'queue.Queue[Any]') -> None:
         """Fetch Cartesia SSE audio for `text` and push raw PCM chunks into pcm_q.
         Pushes None as sentinel when done or on error."""
         from cartesia.types.sse_events import ChunkEvent  # type: ignore
         try:
-            has_arabic = bool(re.search('[\u0600-\u06FF]', text))
-            language = "ar" if has_arabic else "en"
-            voice_id = config.CARTESIA_VOICE_ARABIC if has_arabic else config.CARTESIA_VOICE_ENGLISH
-            cache_key = f"{text}_{language}"
+            language = config.detect_tts_language(text)
+            voice_id = config.get_cartesia_voice_id(language)
+            cache_key = f"{text}_{language}_{voice_id}"
 
             # Cached: push stored PCM straight to queue
             if config.ENABLE_TTS_CACHING and cache_key in self.cache:
                 pcm = self.cache[cache_key]
                 for i in range(0, len(pcm), self.CHUNK * 2):
                     pcm_q.put(pcm[i:i + self.CHUNK * 2])
+                pcm_q.put({"type": "sentence_end", "text": text})
                 return
 
             pcm_buffer = b""
@@ -270,48 +334,65 @@ class TTSEngine:
             if config.ENABLE_TTS_CACHING and pcm_buffer:
                 self.cache[cache_key] = pcm_buffer
 
+            pcm_q.put({"type": "sentence_end", "text": text})
+
         except Exception as e:
             print(f"   ✗ TTS fetch error: {e}")
 
-    def play_continuous(self, pcm_q: 'queue.Queue[Optional[bytes]]') -> bool:
+    def play_continuous(self, pcm_q: 'queue.Queue[Any]') -> Tuple[bool, List[str]]:
         """Continuously play PCM chunks from pcm_q until None sentinel.
-        Returns False if interrupted by user speech."""
-        global stop_speaking
-        stop_speaking = False
-
-        out = self._pa.open(
-            format=pyaudio.paInt16, channels=self.CHANNELS,
-            rate=self.SAMPLE_RATE, output=True, frames_per_buffer=self.CHUNK
-        )
-        interrupt_thread = threading.Thread(target=self._monitor_interrupt, daemon=True)
-        interrupt_thread.start()
+        Returns (is_interrupted, delivered_sentences)."""
+        delivered_sentences: List[str] = []
+        out: Any = None
+        interrupt_thread: Optional[threading.Thread] = None
+        interrupt_requested = threading.Event()
+        playback_done = threading.Event()
 
         interrupted = False
-        while True:
-            try:
-                chunk = pcm_q.get(timeout=8)
-            except queue.Empty:
-                break
-            if chunk is None:
-                break
-            if stop_speaking:
-                interrupted = True
-                # drain remaining queue quickly
-                while not pcm_q.empty():
-                    try: pcm_q.get_nowait()
-                    except: break
-                break
-            out.write(chunk)
+        try:
+            out = self._pa.open(
+                format=pyaudio.paInt16, channels=self.CHANNELS,
+                rate=self.SAMPLE_RATE, output=True, frames_per_buffer=self.CHUNK
+            )
+            if config.ENABLE_INTERRUPT_DETECTION:
+                interrupt_thread = threading.Thread(
+                    target=self._monitor_interrupt,
+                    args=(interrupt_requested, playback_done),
+                    daemon=True,
+                )
+                interrupt_thread.start()
 
-        out.stop_stream()
-        out.close()
-        stop_speaking = True
-        interrupt_thread.join(timeout=0.3)
-        stop_speaking = False
+            while True:
+                try:
+                    chunk = pcm_q.get(timeout=8)
+                except queue.Empty:
+                    break
+                if chunk is None:
+                    break
+                if isinstance(chunk, dict) and chunk.get("type") == "sentence_end":
+                    delivered_text = str(chunk.get("text", "")).strip()
+                    if delivered_text:
+                        delivered_sentences.append(delivered_text)
+                    continue
+                if interrupt_requested.is_set():
+                    interrupted = True
+                    # drain remaining queue quickly
+                    while not pcm_q.empty():
+                        try:
+                            pcm_q.get_nowait()
+                        except Exception:
+                            break
+                    break
+                out.write(chunk)
+        finally:
+            playback_done.set()
+            self._safe_stop_close_stream(out)
+            if interrupt_thread is not None:
+                interrupt_thread.join(timeout=0.3)
 
         if interrupted:
             print("   ✋ User interrupted — listening...")
-        return not interrupted
+        return interrupted, delivered_sentences
 
 
 class STTEngine:
@@ -396,8 +477,6 @@ class STTEngine:
 
     def listen(self) -> Tuple[Optional[str], Optional[str]]:
         """Listen and convert speech to text - fast, no per-turn calibration"""
-        global user_is_speaking, stop_speaking
-        
         try:
             print("\n🎤 Listening...")
             
@@ -436,10 +515,10 @@ class LLMEngine:
     def stream_and_speak(conversation: ConversationManager, user_message: str, tts_engine: TTSEngine) -> Optional[str]:
         """3-thread pipeline: LLM streams → sentence queue → Cartesia pre-fetches → playback.
         Zero gap between sentences because next audio is pre-fetched while current plays."""
-        global stop_speaking
-
+        cancel_event = threading.Event()
+        stop_speaking = cancel_event
         sentence_q: queue.Queue[Optional[str]]   = queue.Queue()
-        pcm_q:      queue.Queue[Optional[bytes]] = queue.Queue(maxsize=100)
+        pcm_q:      queue.Queue[Any] = queue.Queue(maxsize=100)
         full_response_box: List[str] = [""]
 
         # ── Thread 1: stream LLM tokens, split into sentences ──────────────
@@ -456,17 +535,23 @@ class LLMEngine:
                 )
                 buf = ""
                 for chunk in stream:
+                    if stop_speaking.is_set():
+                        break
                     token = chunk.choices[0].delta.content or ""
                     full_response_box[0] += token
                     buf += token
                     # Split on sentence-ending chars followed by space or end
                     parts = re.split(r'(?<=[.!?\u061f\u060c])\s+', buf)
                     for sentence in parts[:-1]:  # all but last (may be incomplete)
+                        if stop_speaking.is_set():
+                            break
                         s = sentence.strip()
                         if len(s) > 2:
                             sentence_q.put(s)
+                    if stop_speaking.is_set():
+                        break
                     buf = parts[-1]  # keep the incomplete tail
-                if buf.strip() and len(buf.strip()) > 2:
+                if (not stop_speaking.is_set()) and buf.strip() and len(buf.strip()) > 2:
                     sentence_q.put(buf.strip())
             except Exception as e:
                 print(f"\n   ✗ LLM error: {e}")
@@ -481,7 +566,7 @@ class LLMEngine:
                     sentence = sentence_q.get()
                     if sentence is None:
                         break
-                    if stop_speaking:
+                    if cancel_event.is_set():
                         # drain sentence queue, don\'t fetch more
                         while not sentence_q.empty():
                             try: sentence_q.get_nowait()
@@ -501,15 +586,29 @@ class LLMEngine:
         tts_t.start()
 
         # Main thread: play continuously from pcm_q (zero gaps between sentences)
-        tts_engine.play_continuous(pcm_q)
+        interrupted, delivered_sentences = tts_engine.play_continuous(pcm_q)
+
+        if interrupted:
+            cancel_event.set()
 
         tts_t.join(timeout=5)
         llm_t.join(timeout=5)
 
-        full = full_response_box[0]
-        if full:
-            conversation.add_assistant_message(full)
-        return full or None
+        full = full_response_box[0].strip()
+        played = " ".join(delivered_sentences).strip()
+
+        # Keep prompt history aligned with what patient actually heard.
+        if played:
+            conversation.add_assistant_message(played)
+
+        conversation.add_assistant_turn_event(
+            generated_text=full,
+            played_text=played,
+            interrupted=interrupted,
+            completed=(not interrupted and bool(full) and full == played),
+        )
+
+        return played or None
 
     @staticmethod
     def get_response(conversation: ConversationManager, user_message: str) -> Optional[str]:
@@ -770,6 +869,7 @@ def run_voice_agent():
     print(f"   • TTS Engine: {config.TTS_ENGINE.upper()}")
     print(f"   • Voice (AR): {config.CARTESIA_VOICE_ARABIC}")
     print(f"   • Voice (EN): {config.CARTESIA_VOICE_ENGLISH}")
+    print(f"   • Voice (HI): {config.CARTESIA_VOICE_HINDI}")
     print(f"   • Interrupt Detection: {'ON' if config.ENABLE_INTERRUPT_DETECTION else 'OFF'}")
     print(f"   • Natural Pauses: {'ON' if config.ADD_NATURAL_PAUSES else 'OFF'}")
     print(f"\n💡 Say goodbye to exit\n")

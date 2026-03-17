@@ -5,6 +5,8 @@ import os
 from dotenv import load_dotenv
 from cartesia import Cartesia
 
+import config
+
 # Load environment
 load_dotenv()
 
@@ -19,6 +21,9 @@ except Exception as e:
     print(f"❌ Failed to initialize: {e}")
     exit(1)
 
+# Ensure output directory exists on clean environments.
+os.makedirs("output", exist_ok=True)
+
 # Test Arabic
 print("\n📝 Generating Arabic audio...")
 text_ar = "مرحباً، أنا مريم من عيادة كيربوت"
@@ -26,18 +31,14 @@ text_ar = "مرحباً، أنا مريم من عيادة كيربوت"
 try:
     with open("output/test_arabic.wav", "wb") as f:
         bytes_iter = client.tts.bytes(
-            model_id="sonic-3",
+            model_id=config.CARTESIA_MODEL,
             transcript=text_ar,
             voice={
                 "mode": "id",
-                "id": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
+                "id": config.get_cartesia_voice_id("ar"),
             },
             language="ar",
-            output_format={
-                "container": "wav",
-                "sample_rate": 44100,
-                "encoding": "pcm_s16le",
-            },
+            output_format=config.CARTESIA_OUTPUT_FORMAT,  # type: ignore[arg-type]
         )
         
         for chunk in bytes_iter:
@@ -54,18 +55,14 @@ text_en = "Welcome to Cartesia! I'm Mariam from CareBot Clinic."
 try:
     with open("output/test_english.wav", "wb") as f:
         bytes_iter = client.tts.bytes(
-            model_id="sonic-3",
+            model_id=config.CARTESIA_MODEL,
             transcript=text_en,
             voice={
                 "mode": "id",
-                "id": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
+                "id": config.get_cartesia_voice_id("en"),
             },
             language="en",
-            output_format={
-                "container": "wav",
-                "sample_rate": 44100,
-                "encoding": "pcm_s16le",
-            },
+            output_format=config.CARTESIA_OUTPUT_FORMAT,  # type: ignore[arg-type]
         )
         
         for chunk in bytes_iter:

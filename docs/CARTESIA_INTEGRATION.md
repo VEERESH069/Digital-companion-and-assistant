@@ -11,7 +11,7 @@ Cartesia TTS has been successfully integrated into your voice agent! Cartesia of
 ### 1. **Environment Configuration** (`.env`)
 Added Cartesia API key:
 ```env
-CARTESIA_API_KEY=sk_car_3yjkiGVjCHaufiguudJtWr
+CARTESIA_API_KEY=your_cartesia_api_key_here
 ```
 
 ### 2. **Dependencies** (`requirements.txt`)

@@ -12,6 +12,8 @@ import pygame
 import tempfile
 import re
 
+import config
+
 # Load environment
 load_dotenv()
 
@@ -40,12 +42,12 @@ def listen_to_user():
     
     try:
         # Use Google Speech Recognition
-        text = recognizer.recognize_google(audio, language="ar-SA")
+        text = recognizer.recognize_google(audio, language="ar-SA")  # type: ignore[attr-defined]
         return text
     except:
         try:
             # Fallback to English
-            text = recognizer.recognize_google(audio)
+            text = recognizer.recognize_google(audio)  # type: ignore[attr-defined]
             return text
         except Exception as e:
             print(f"❌ Could not understand: {e}")
@@ -78,9 +80,9 @@ def speak_with_cartesia(text):
     """Convert text to speech using Cartesia"""
     print(f"\n🔊 Mariam: {text}")
     
-    # Detect language
-    has_arabic = bool(re.search('[\u0600-\u06FF]', text))
-    language = "ar" if has_arabic else "en"
+    # Detect response language and use its configured Cartesia voice.
+    language = config.detect_tts_language(text)
+    voice_id = config.get_cartesia_voice_id(language)
     
     # Generate audio
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
@@ -88,16 +90,12 @@ def speak_with_cartesia(text):
     temp_file.close()
     
     with open(temp_path, "wb") as f:
-        output_format = {
-            "container": "wav",
-            "sample_rate": 44100,
-            "encoding": "pcm_s16le",
-        }
+        output_format = config.CARTESIA_OUTPUT_FORMAT
         
         for chunk in cartesia_client.tts.bytes(
-            model_id="sonic-3",
+            model_id=config.CARTESIA_MODEL,
             transcript=text,
-            voice={"mode": "id", "id": "6ccbfb76-1fc6-48f7-b71d-91ac6298247b"},
+            voice={"mode": "id", "id": voice_id},
             language=language,
             output_format=output_format,  # type: ignore
         ):

@@ -1,13 +1,16 @@
 """
-Voice Agent - Cartesia TTS
-===========================
+Voice Agent - Legacy Runtime (Fallback)
+========================================
+
+This module is kept for debugging and fallback use.
+Use `voice_agent_production.py` as the primary runtime.
 
 Uses:
 - Cartesia (Natural multilingual Text-to-Speech)
 - Google Speech Recognition
 - GPT-4o mini
 
-Run: python voice_agent.py
+Run (legacy fallback): python voice_agent.py
 
 Flow:
 1. Conversation with patient
@@ -31,6 +34,8 @@ from openai import OpenAI
 from dotenv import load_dotenv
 from cartesia import Cartesia
 import pygame
+
+import config
 
 # Load environment
 load_dotenv()
@@ -106,11 +111,14 @@ def speak(text: str, lang: str = "ar"):
     """
     try:
         print(f"\n🔊 Agent: {text}")
+
+        if cartesia_client is None:
+            print("   ✗ Cartesia client is not initialized")
+            return False
         
-        # Auto-detect language based on text content
-        has_arabic = bool(re.search('[\u0600-\u06FF]', text))
-        language = "ar" if has_arabic else "en"
-        voice_id = "6ccbfb76-1fc6-48f7-b71d-91ac6298247b"  # Multilingual voice
+        # Auto-detect response language and use its configured Cartesia voice.
+        language = config.detect_tts_language(text)
+        voice_id = config.get_cartesia_voice_id(language)
         
         # Generate speech using Cartesia
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
@@ -118,14 +126,10 @@ def speak(text: str, lang: str = "ar"):
         temp_file.close()
         
         with open(temp_path, "wb") as f:
-            output_format = {
-                "container": "wav",
-                "sample_rate": 44100,
-                "encoding": "pcm_s16le",
-            }
+            output_format = config.CARTESIA_OUTPUT_FORMAT
             
             bytes_iter = cartesia_client.tts.bytes(
-                model_id="sonic-3",
+                model_id=config.CARTESIA_MODEL,
                 transcript=text,
                 voice={
                     "mode": "id",

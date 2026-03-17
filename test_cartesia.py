@@ -22,6 +22,10 @@ def test_tts(text, language, filename):
     
     try:
         # Generate audio
+        from pathlib import Path
+        parent = Path(filename).parent
+        if not parent.exists():
+            parent.mkdir(parents=True)
         with open(filename, "wb") as f:
             bytes_iter = client.tts.bytes(
                 model_id="sonic-3",

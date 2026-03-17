@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+.git/
+.gitignore
+.vscode/
+venv/
+.venv/
+output/
+voice_samples/
+.env

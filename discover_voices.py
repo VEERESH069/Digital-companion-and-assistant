@@ -3,6 +3,7 @@ Cartesia Voice Discovery Tool
 Find the best voices for Arabic and English
 """
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 from cartesia import Cartesia
 
@@ -118,7 +119,10 @@ def test_voice(voice_id, text, language, output_file):
         print(f"\n🎙️ Testing voice: {voice_id}")
         print(f"Text: {text}")
         print(f"Language: {language}")
-        
+
+        # Create parent directory if it doesn't exist
+        Path(output_file).parent.mkdir(parents=True, exist_ok=True)
+
         with open(output_file, "wb") as f:
             bytes_iter = client.tts.bytes(
                 model_id="sonic-3",
