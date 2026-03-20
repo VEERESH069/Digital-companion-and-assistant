@@ -370,15 +370,28 @@ TTS_ENGINE = "cartesia"
 CARTESIA_MODEL = "sonic-3"
 CARTESIA_VOICE_ARABIC = "6ccbfb76-1fc6-48f7-b71d-91ac6298247b"
 CARTESIA_VOICE_ENGLISH = "6ccbfb76-1fc6-48f7-b71d-91ac6298247b"
-CARTESIA_VOICE_HINDI = CARTESIA_VOICE_ENGLISH  # Use English voice for Hindi if needed
+CARTESIA_VOICE_HINDI = "95d51f79-c397-46f9-b49a-23763d3eaa2d"  # Dedicated Hindi voice
 
 # Audio format (22050 Hz is optimal for fast synthesis)
 CARTESIA_OUTPUT_FORMAT = {
-    "container": "wav",
-    "sample_rate": 44100,
-    "encoding": "pcm_s16le",
+  "container": "wav",
+  "sample_rate": 44100,
+  "encoding": "pcm_s16le",
 }
 ```
+#### Environment Variables (Required in .env)
+
+| Variable             | Purpose                                 | Example/Notes                                 |
+|----------------------|-----------------------------------------|-----------------------------------------------|
+| OPENAI_API_KEY       | OpenAI LLM + Whisper STT                | sk-... (get from OpenAI platform)             |
+| CARTESIA_API_KEY     | Cartesia TTS                            | sk_car_... (get from Cartesia Console)        |
+| ANTHROPIC_API_KEY    | (Optional) Claude fallback LLM          | sk-ant-...                                    |
+| ENVIRONMENT          | App mode (development/production)       | development                                   |
+| LOG_LEVEL            | Logging verbosity                       | INFO, DEBUG                                   |
+| DATA_DIR             | Data storage directory                  | ./data                                        |
+| LOGS_DIR             | Log file directory                      | ./logs                                        |
+
+See `.env.example` for a full template and required fields.
 
 ### Speech-to-Text (Whisper)
 ```python
@@ -857,6 +870,12 @@ If tests fail, check in order:
 ---
 
 ## 🏗️ Architecture
+
+#### High-Level Architecture
+
+The system is modular, with each major function (STT, LLM, TTS, PDF generation) separated for maintainability and scalability. The primary entry point is `voice_agent_production.py`, which orchestrates the conversation pipeline. All configuration is centralized in `config.py` and environment variables.
+
+For production deployments or scaling, consider moving core logic into a package directory (e.g., `previsit_agent/`) and keeping only entry points and config files at the root.
 
 ### Component Overview
 

@@ -124,6 +124,9 @@ Important:
         if normalized in {"ar", "en", "hi"}:
             self.preferred_language = normalized
 
+    def get_preferred_language(self) -> str:
+        return getattr(self, "preferred_language", "en")
+
     def get_history_for_response(self):
         """Get prompt history with a strong reminder to answer in the selected language."""
         language_names = {
@@ -131,7 +134,7 @@ Important:
             "en": "English",
             "hi": "Hindi",
         }
-        language_name = language_names.get(self.preferred_language, "English")
+        language_name = language_names.get(self.get_preferred_language(), "English")
         return self.history + [
             {
                 "role": "system",
@@ -592,29 +595,34 @@ class STTEngine:
             print(f"   ⚠ OpenAI Whisper API error: {e}")
             return None, None
 
-    def listen(self) -> Tuple[Optional[str], Optional[str]]:
-        """Listen and convert speech to text - fast, no per-turn calibration"""
+    def listen(self, conversation_manager=None) -> Tuple[Optional[str], Optional[str]]:
+        """Listen and convert speech to text - fast, no per-turn calibration. Optionally use conversation_manager to persist language preference."""
         try:
             print("\n🎤 Listening...")
-            
             with self.microphone as source:
                 # No calibration here — done once at startup
                 audio = self.recognizer.listen(
                     source,
-                    timeout=20,
+                    timeout=10,
                     phrase_time_limit=config.STT_PHRASE_TIME_LIMIT
                 )
-            
             print("   ⏳ Transcribing...")
-            
             # Use OpenAI cloud Whisper API (fastest, auto-detects language)
             result = self._transcribe_openai_api(audio)
             if result[0]:
+                # Only update language if user clearly requests switch
+                if conversation_manager:
+                    detected_lang = result[1]
+                    # Only switch if user says "switch to ..." or similar, else persist
+                    # (You can expand this logic as needed)
+                    if detected_lang and detected_lang != conversation_manager.get_preferred_language():
+                        print(f"   ⚠ Detected language '{detected_lang}' differs from preferred '{conversation_manager.get_preferred_language()}'. Keeping preferred unless user requests switch.")
+                        # Do not auto-switch; keep preferred
+                        return result[0], conversation_manager.get_preferred_language()
                 return result
             # Fallback to Google if OpenAI API fails
             print("   → Falling back to Google STT")
             return self._transcribe_google(audio)
-                    
         except sr.WaitTimeoutError:
             return "__silence__", None
         except KeyboardInterrupt:
@@ -760,42 +768,27 @@ class LLMEngine:
             for msg in history if msg['role'] != 'system'
         ])
         
-        extraction_prompt = f"""Analyze this medical conversation and extract structured clinical data.
+        extraction_prompt = f"""
+You are a clinical data extraction AI. Analyze the following medical conversation and extract structured clinical data. 
 
 CONVERSATION:
 {transcript}
 
-Return JSON with this structure:
-{{
-    "clinical_data": {{
-        "chief_complaint": "complaint or null",
-        "duration": "duration or null",
-        "severity": <1-10 or null>,
-        "location": "location or null",
-        "triggers": [],
-        "current_medications": [],
-        "allergies": [],
-        "previous_dental_work": "description or null",
-        "medical_conditions": []
-    }},
-    "confidence_scores": {{
-        "chief_complaint": <0.0-1.0>,
-        "duration": <0.0-1.0>,
-        "severity": <0.0-1.0>,
-        "location": <0.0-1.0>,
-        "triggers": <0.0-1.0>,
-        "current_medications": <0.0-1.0>,
-        "allergies": <0.0-1.0>,
-        "previous_dental_work": <0.0-1.0>,
-        "medical_conditions": <0.0-1.0>
-    }},
-    "clinical_summary": "2-3 sentence summary",
-    "red_flags": [],
-    "urgency_level": "LOW|MEDIUM|HIGH|CRITICAL",
-    "recommended_specialist": "specialist type"
-}}
+Instructions:
+- Carefully read the conversation and extract all relevant clinical information, even if the patient uses informal or non-medical language.
+- If a field is not mentioned, set it to null or an empty list as appropriate.
+- For lists (triggers, medications, allergies, medical_conditions, red_flags), always return a list (even if empty).
+- For severity, ensure it is an integer between 1 and 10, or null if not specified.
+- For confidence scores, use a float between 0.0 and 1.0 for each field, reflecting your certainty.
+- For clinical_summary, write a concise 2-3 sentence summary in plain language.
+- For urgency_level, choose only one of: LOW, MEDIUM, HIGH, CRITICAL.
+- For recommended_specialist, use a specific type (e.g., General Dentist, Endodontist, Oral Surgeon).
+- Do not invent data. Only extract what is present or implied in the conversation.
+- Return ONLY valid, minified JSON (no comments, no extra text, no markdown, no explanation).
 
-Return ONLY valid JSON, no explanation."""
+Example output:
+{{"clinical_data":{{"chief_complaint":"Toothache","duration":"3 days","severity":7,"location":"lower left molar","triggers":["cold drinks"],"current_medications":["ibuprofen"],"allergies":[],"previous_dental_work":null,"medical_conditions":["diabetes"]}},"confidence_scores":{{"chief_complaint":0.95,"duration":0.9,"severity":0.8,"location":0.85,"triggers":0.7,"current_medications":0.8,"allergies":1.0,"previous_dental_work":0.5,"medical_conditions":0.9}},"clinical_summary":"The patient reports a 3-day toothache in the lower left molar, worsened by cold drinks. No allergies. Has diabetes.","red_flags":[],"urgency_level":"HIGH","recommended_specialist":"Endodontist"}}
+"""
 
         try:
             response = client.chat.completions.create(
@@ -817,7 +810,11 @@ Return ONLY valid JSON, no explanation."""
                 result_text = result_text[:-3]
             result_text = result_text.strip()
             
-            return json.loads(result_text)
+            try:
+                return json.loads(result_text)
+            except Exception as parse_err:
+                print(f"   ⚠ JSON parsing error: {parse_err}\n   Raw output: {result_text}")
+                return get_default_clinical_data()
             
         except Exception as e:
             print(f"   ⚠ Extraction error: {e}")
@@ -929,16 +926,22 @@ def process_conversation_end(conversation: ConversationManager) -> dict:
     # Extract clinical data
     print("\n1️⃣ Extracting clinical data...")
     extracted_data = LLMEngine.extract_clinical_data(conversation)
-    print("   ✓ Extraction complete")
+    try:
+        print("   ✓ Extraction complete")
+        print("   • Extracted data:", json.dumps(extracted_data, ensure_ascii=False))
+    except Exception as e:
+        print(f"   ⚠ Error printing extracted data: {e}")
     
     # Build payload
     print("\n2️⃣ Building clinical payload...")
     payload = build_clinical_payload(extracted_data)
-    print(f"   ✓ Patient ID: {payload['patient_id']}")
-    print(f"   ✓ Urgency: {payload['urgency_level']}")
-    
-    if payload['red_flags']:
-        print(f"   ⚠ Red Flags: {', '.join(payload['red_flags'])}")
+    try:
+        print(f"   ✓ Patient ID: {payload['patient_id']}")
+        print(f"   ✓ Urgency: {payload['urgency_level']}")
+        if payload['red_flags']:
+            print(f"   ⚠ Red Flags: {', '.join(payload['red_flags'])}")
+    except Exception as e:
+        print(f"   ⚠ Error printing payload info: {e}")
     
     # Save JSON
     if config.SAVE_JSON:

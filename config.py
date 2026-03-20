@@ -9,7 +9,7 @@ TTS_ENGINE = "cartesia"  # Using Cartesia for natural multilingual voices
 CARTESIA_MODEL = "sonic-3"  # Cartesia's latest model
 CARTESIA_VOICE_ARABIC = "6ccbfb76-1fc6-48f7-b71d-91ac6298247b"  # Natural Arabic voice
 CARTESIA_VOICE_ENGLISH = "6ccbfb76-1fc6-48f7-b71d-91ac6298247b"  # Natural English voice
-CARTESIA_VOICE_HINDI = CARTESIA_VOICE_ENGLISH  # Set a dedicated Hindi voice ID if needed
+CARTESIA_VOICE_HINDI = "95d51f79-c397-46f9-b49a-23763d3eaa2d"  # Dedicated Hindi voice
 CARTESIA_VOICE_DEFAULT = CARTESIA_VOICE_ENGLISH
 CARTESIA_LANGUAGE_VOICES = {
     "ar": CARTESIA_VOICE_ARABIC,
@@ -74,11 +74,11 @@ def detect_tts_language(text: str) -> str:
         return "hi"
 
     scores = _score_transliterated_language(text)
-    if scores["hi"] >= 2 and scores["hi"] > scores["ar"]:
+    # Stricter: require at least 3 keyword hits and a clear lead
+    if scores["hi"] >= 3 and scores["hi"] > scores["ar"]:
         return "hi"
-    if scores["ar"] >= 2 and scores["ar"] > scores["hi"]:
+    if scores["ar"] >= 3 and scores["ar"] > scores["hi"]:
         return "ar"
-
     return "en"
 
 
@@ -102,7 +102,7 @@ STT_LANGUAGES = ["ar", "en", "hi"]
 STT_ENERGY_THRESHOLD = 300
 STT_DYNAMIC_ENERGY = False
 STT_PAUSE_THRESHOLD = 0.6   # Seconds silence = end of speech; shorter = faster response
-STT_PHRASE_TIME_LIMIT = 25
+STT_PHRASE_TIME_LIMIT = 10  # Lowered for faster response
 
 # Voice Cloning
 ENABLE_VOICE_CLONING = False  # Set to True to use custom voice samples
@@ -128,8 +128,8 @@ INTERRUPT_PEAK_THRESHOLD = 2600  # Peak sample magnitude required to treat audio
 
 # Natural Speech Settings
 ADD_NATURAL_PAUSES = True  # Add human-like pauses in speech
-PAUSE_AFTER_SENTENCE = 0.75  # Seconds to pause after each sentence
-PAUSE_AFTER_QUESTION = 1.0  # Seconds to pause after questions
+PAUSE_AFTER_SENTENCE = 0.5  # Seconds to pause after each sentence
+PAUSE_AFTER_QUESTION = 0.7  # Seconds to pause after questions
 TTS_TAIL_SILENCE_SEC = 0.35  # Short silence after playback so final words are not clipped
 
 # Performance Settings
