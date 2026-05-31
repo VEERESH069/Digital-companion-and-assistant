@@ -93,6 +93,15 @@ def init_ai_engines():
         raise
 
 
+# ============= APPLICATION STARTUP =============
+# Initialize engines when app starts (for both local and production)
+try:
+    init_ai_engines()
+except Exception as e:
+    logger.error(f"Critical: Failed to initialize AI engines on startup: {e}")
+    logger.warning("App is running but AI features may not work. Check API keys in .env")
+
+
 # ============= MIDDLEWARE =============
 
 def log_request(f):
