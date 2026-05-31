@@ -279,6 +279,106 @@
         .tab-content.active {
             display: block;
         }
+
+        /* Audio Recording Styles */
+        .audio-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .recording-indicator {
+            display: none;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: #ffebee;
+            border: 1px solid #ef5350;
+            border-radius: 6px;
+            color: #c62828;
+            font-weight: 600;
+        }
+
+        .recording-indicator.active {
+            display: flex;
+            animation: pulse 1s infinite;
+        }
+
+        .recording-dot {
+            width: 12px;
+            height: 12px;
+            background: #ef5350;
+            border-radius: 50%;
+            animation: blink 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        @keyframes blink {
+            0%, 50%, 100% { opacity: 1; }
+            25%, 75% { opacity: 0.3; }
+        }
+
+        .audio-player {
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 15px;
+            display: none;
+        }
+
+        .audio-player.active {
+            display: block;
+        }
+
+        .audio-player audio {
+            width: 100%;
+        }
+
+        .waveform-container {
+            background: #000;
+            border-radius: 6px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #00ff00;
+            font-family: monospace;
+            margin: 15px 0;
+            overflow: hidden;
+        }
+
+        .waveform-bars {
+            display: flex;
+            gap: 2px;
+            align-items: flex-end;
+            height: 40px;
+            padding: 0 10px;
+        }
+
+        .waveform-bar {
+            width: 4px;
+            background: linear-gradient(to top, #667eea, #764ba2);
+            border-radius: 2px;
+            animation: wave 0.5s ease-in-out infinite;
+        }
+
+        @keyframes wave {
+            0%, 100% { height: 5px; }
+            50% { height: 30px; }
+        }
+
+        .recording-time {
+            font-family: monospace;
+            font-weight: 600;
+            color: #667eea;
+        }
     </style>
 </head>
 <body>
@@ -329,6 +429,25 @@
 
                         <div class="form-group">
                             <button onclick="sendMessage()">Send Message</button>
+                        </div>
+
+                        <!-- Audio Controls -->
+                        <div class="form-group">
+                            <label>Or Use Voice 🎤</label>
+                            <div class="audio-controls">
+                                <button id="recordBtn" onclick="toggleRecording()" title="Record audio message">🎤 Record</button>
+                                <div class="recording-indicator" id="recordingIndicator">
+                                    <div class="recording-dot"></div>
+                                    <span>Recording...</span>
+                                    <span class="recording-time" id="recordingTime">0:00</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Response Audio Player -->
+                        <div class="audio-player" id="audioPlayer">
+                            <div style="margin-bottom: 10px; font-weight: 600; color: #333;">🔊 Agent Response</div>
+                            <audio id="responseAudio" controls style="width: 100%;"></audio>
                         </div>
 
                         <div class="form-group">
@@ -389,9 +508,17 @@
         const API_URL = '/api';
         let currentSessionId = null;
 
+        // Audio Recording Variables
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let isRecording = false;
+        let recordingStartTime = 0;
+        let recordingTimer = null;
+
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
             checkApiHealth();
+            requestMicrophoneAccess();
         });
 
         // Check API Health
@@ -410,6 +537,167 @@
                 document.getElementById('apiStatus').style.color = '#e74c3c';
             }
         }
+
+        // Request Microphone Access
+        async function requestMicrophoneAccess() {
+            try {
+                await navigator.mediaDevices.getUserMedia({ audio: true });
+                console.log('Microphone access granted');
+            } catch (error) {
+                console.warn('Microphone access denied:', error);
+                showStatus('Microphone access required for voice features', 'error');
+            }
+        }
+
+        // Toggle Audio Recording
+        async function toggleRecording() {
+            if (isRecording) {
+                stopRecording();
+            } else {
+                startRecording();
+            }
+        }
+
+        // Start Recording
+        async function startRecording() {
+            if (!currentSessionId) {
+                showStatus('Start a session first', 'error');
+                return;
+            }
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
+
+                mediaRecorder.ondataavailable = (event) => {
+                    audioChunks.push(event.data);
+                };
+
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                    await processAudio(audioBlob);
+                    stream.getTracks().forEach(track => track.stop());
+                };
+
+                mediaRecorder.start();
+                isRecording = true;
+                recordingStartTime = Date.now();
+
+                // Update UI
+                document.getElementById('recordBtn').style.background = '#e74c3c';
+                document.getElementById('recordBtn').textContent = '⏹ Stop Recording';
+                document.getElementById('recordingIndicator').classList.add('active');
+
+                // Start timer
+                recordingTimer = setInterval(updateRecordingTime, 100);
+
+                showStatus('Recording started... Speak now', 'info');
+            } catch (error) {
+                showStatus(`Error accessing microphone: ${error.message}`, 'error');
+                console.error('Recording error:', error);
+            }
+        }
+
+        // Stop Recording
+        function stopRecording() {
+            if (mediaRecorder && isRecording) {
+                mediaRecorder.stop();
+                isRecording = false;
+
+                // Update UI
+                document.getElementById('recordBtn').style.background = '';
+                document.getElementById('recordBtn').textContent = '🎤 Record';
+                document.getElementById('recordingIndicator').classList.remove('active');
+
+                // Clear timer
+                if (recordingTimer) {
+                    clearInterval(recordingTimer);
+                }
+
+                showStatus('Recording stopped. Processing...', 'info');
+            }
+        }
+
+        // Update Recording Time
+        function updateRecordingTime() {
+            const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+            const minutes = Math.floor(elapsed / 60);
+            const seconds = elapsed % 60;
+            document.getElementById('recordingTime').textContent =
+                `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        // Process Audio (send to backend)
+        async function processAudio(audioBlob) {
+            if (!currentSessionId) return;
+
+            try {
+                showStatus('Transcribing audio...', 'info');
+
+                // Create form data
+                const formData = new FormData();
+                formData.append('audio', audioBlob, 'recording.wav');
+
+                // Send to backend
+                const response = await fetch(`${API_URL}/sessions/${currentSessionId}/audio`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    // Add transcribed user message
+                    addMessageToUI('user', data.user_text);
+
+                    // Add AI response
+                    if (data.ai_response_text) {
+                        addMessageToUI('assistant', data.ai_response_text);
+
+                        // Play audio response if available
+                        if (data.audio_url) {
+                            playResponseAudio(data.audio_url);
+                        }
+                    }
+
+                    showStatus('Audio processed successfully', 'success');
+                    getSessionData();
+                } else {
+                    showStatus(`Error: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showStatus(`Error processing audio: ${error.message}`, 'error');
+                console.error('Audio processing error:', error);
+            }
+        }
+
+        // Play Response Audio
+        async function playResponseAudio(audioUrl) {
+            try {
+                const audioElement = document.getElementById('responseAudio');
+                const audioPlayer = document.getElementById('audioPlayer');
+
+                // If it's an endpoint path, fetch the audio blob
+                if (audioUrl.startsWith('/')) {
+                    const response = await fetch(audioUrl);
+                    if (response.ok) {
+                        const blob = await response.blob();
+                        const audioSrc = URL.createObjectURL(blob);
+                        audioElement.src = audioSrc;
+                        audioPlayer.classList.add('active');
+                        audioElement.play();
+                    }
+                } else {
+                    audioElement.src = audioUrl;
+                    audioPlayer.classList.add('active');
+                    audioElement.play();
+                }
+            } catch (error) {
+                console.error('Error playing audio:', error);
+            }
+        }
+
 
         // Start Session
         async function startSession() {

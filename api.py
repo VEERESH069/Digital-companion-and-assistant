@@ -9,8 +9,9 @@ import time
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, Tuple
 from functools import wraps
+from io import BytesIO
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from dotenv import load_dotenv
 
@@ -23,6 +24,7 @@ from models import ConversationSession, ClinicalData
 
 # Initialize voice agent modules
 from previsit_agent import LLMEngine, init_openai_client
+from audio_processor import AudioProcessor, save_uploaded_audio, cleanup_audio_file
 
 # Setup logging
 logging.basicConfig(
@@ -48,17 +50,43 @@ db = init_db(os.getenv("DATABASE_URL"))
 
 # Initialize AI engines
 llm_engine = None
+audio_processor = None
+cartesia_client = None
+
+
+def init_cartesia_client():
+    """Initialize Cartesia client for TTS"""
+    global cartesia_client
+    try:
+        from cartesia import Cartesia
+        api_key = os.getenv("CARTESIA_API_KEY")
+        if api_key:
+            cartesia_client = Cartesia(api_key=api_key)
+            logger.info("Cartesia client initialized successfully")
+        else:
+            logger.warning("CARTESIA_API_KEY not set - TTS will not be available")
+    except ImportError:
+        logger.warning("Cartesia library not available - TTS will not be available")
+    except Exception as e:
+        logger.warning(f"Failed to initialize Cartesia client: {e}")
 
 
 def init_ai_engines():
     """Initialize AI engines on startup"""
-    global llm_engine
+    global llm_engine, audio_processor, cartesia_client
     try:
         init_openai_client(
             api_key=os.getenv("OPENAI_API_KEY"),
             model=os.getenv("LLM_MODEL", "gpt-4-turbo"),
         )
         llm_engine = LLMEngine()
+        
+        # Initialize Cartesia client
+        init_cartesia_client()
+        
+        # Initialize audio processor
+        audio_processor = AudioProcessor(cartesia_client=cartesia_client)
+        
         logger.info("AI engines initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize AI engines: {e}")
@@ -468,6 +496,186 @@ def export_session_json(session_id: str):
     
     except Exception as e:
         logger.error(f"Error exporting session: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+# ============= AUDIO ENDPOINTS =============
+
+@app.route("/api/sessions/<session_id>/audio", methods=["POST"])
+@log_request
+def process_audio(session_id: str):
+    """
+    Process audio: transcribe to text, generate AI response, synthesize response audio
+    
+    Expects multipart/form-data with 'audio' file
+    
+    Returns:
+        {
+            "success": true,
+            "user_text": "...",
+            "ai_response_text": "...",
+            "audio_url": "/api/sessions/{id}/audio/{audio_id}",
+            "message": {...},
+            "ai_message": {...}
+        }
+    """
+    try:
+        session = db.get_session_by_id(session_id)
+        if not session or session.status != "active":
+            return jsonify({"error": "Session not found or inactive"}), 404
+        
+        # Get audio file from request
+        if 'audio' not in request.files:
+            return jsonify({"error": "No audio file provided"}), 400
+        
+        audio_file = request.files['audio']
+        if not audio_file or audio_file.filename == '':
+            return jsonify({"error": "Invalid audio file"}), 400
+        
+        # Save uploaded audio
+        audio_path = save_uploaded_audio(audio_file)
+        if not audio_path:
+            return jsonify({"error": "Failed to save audio file"}), 500
+        
+        try:
+            # Transcribe audio to text
+            if not audio_processor:
+                return jsonify({"error": "Audio processor not available"}), 503
+            
+            user_text, detected_lang = audio_processor.transcribe_audio(audio_path, language=session.language)
+            
+            if not user_text:
+                return jsonify({"error": "Failed to transcribe audio"}), 400
+            
+            logger.info(f"Transcribed audio: '{user_text}' (lang={detected_lang})")
+            
+            # Save user message
+            messages = db.get_messages(session_id)
+            turn_number = len(messages) + 1
+            
+            user_message = db.add_message(
+                session_id=session_id,
+                role="user",
+                content=user_text,
+                turn_number=turn_number,
+            )
+            
+            # Generate AI response
+            ai_response_text = None
+            ai_message = None
+            
+            if llm_engine:
+                try:
+                    # Prepare history for LLM
+                    all_messages = db.get_messages(session_id)
+                    history = [
+                        {"role": m.role, "content": m.content}
+                        for m in all_messages
+                    ]
+                    
+                    # Generate response
+                    ai_response_text = llm_engine.generate_response(
+                        messages=history,
+                        language=session.language,
+                    )
+                    
+                    # Save AI response message
+                    ai_message = db.add_message(
+                        session_id=session_id,
+                        role="assistant",
+                        content=ai_response_text,
+                        turn_number=turn_number + 1,
+                    )
+                    
+                    logger.info(f"Generated AI response: '{ai_response_text}'")
+                
+                except Exception as e:
+                    logger.warning(f"Failed to generate AI response: {e}")
+                    ai_response_text = "I encountered an issue processing your request. Please try again."
+            
+            # Synthesize response audio
+            response_audio_url = None
+            if ai_response_text and audio_processor:
+                try:
+                    audio_bytes = audio_processor.synthesize_speech(
+                        ai_response_text,
+                        language=session.language
+                    )
+                    
+                    if audio_bytes:
+                        # Store audio in temporary location and return URL
+                        response_audio_url = f"/api/sessions/{session_id}/audio/response/{turn_number + 1}"
+                        logger.info(f"Synthesized response audio ({len(audio_bytes)} bytes)")
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to synthesize response audio: {e}")
+            
+            return jsonify({
+                "success": True,
+                "user_text": user_text,
+                "detected_language": detected_lang,
+                "ai_response_text": ai_response_text,
+                "audio_url": response_audio_url,
+                "message": user_message.to_dict(),
+                "ai_message": ai_message.to_dict() if ai_message else None,
+            }), 200
+        
+        finally:
+            # Clean up audio file
+            cleanup_audio_file(audio_path)
+    
+    except Exception as e:
+        logger.error(f"Error processing audio: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/sessions/<session_id>/audio/synthesize", methods=["POST"])
+@log_request
+def synthesize_audio(session_id: str):
+    """
+    Synthesize text to speech
+    
+    Request body:
+    {
+        "text": "Hello, how are you?"
+    }
+    
+    Returns: Audio file (WAV format)
+    """
+    try:
+        session = db.get_session_by_id(session_id)
+        if not session:
+            return jsonify({"error": "Session not found"}), 404
+        
+        data = request.get_json() or {}
+        text = data.get("text")
+        
+        if not text:
+            return jsonify({"error": "Text is required"}), 400
+        
+        if not audio_processor:
+            return jsonify({"error": "Audio processor not available"}), 503
+        
+        # Synthesize audio
+        audio_bytes = audio_processor.synthesize_speech(
+            text,
+            language=session.language
+        )
+        
+        if not audio_bytes:
+            return jsonify({"error": "Failed to synthesize audio"}), 500
+        
+        # Return audio file
+        audio_io = BytesIO(audio_bytes)
+        return send_file(
+            audio_io,
+            mimetype="audio/wav",
+            as_attachment=True,
+            download_name=f"response_{session_id}.wav"
+        )
+    
+    except Exception as e:
+        logger.error(f"Error synthesizing audio: {e}")
         return jsonify({"error": str(e)}), 500
 
 
