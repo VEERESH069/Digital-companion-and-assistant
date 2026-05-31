@@ -1,53 +1,54 @@
-# Pre-Visit Real-Time Voice Agent
-python voice_agent_production.py
-\
+# Pre-Visit Real-Time Voice Agent - Web API
 
-![Python](https://img.shields.io/badge/Python-3.9+-3776ab?style=flat-square) ![License](https://img.shields.io/badge/License-Proprietary-red?style=flat-square) ![Status](https://img.shields.io/badge/Status-Production--Ready-green?style=flat-square)
+![Python](https://img.shields.io/badge/Python-3.11-3776ab?style=flat-square) ![Flask](https://img.shields.io/badge/Flask-3.0.0-green?style=flat-square) ![License](https://img.shields.io/badge/License-Proprietary-red?style=flat-square) ![Status](https://img.shields.io/badge/Status-Production--Ready-brightgreen?style=flat-square)
 
-> Production-grade multilingual medical pre-visit intake assistant with real-time speech interaction, clinical data extraction, and low-latency conversation flows.
+> Production-grade multilingual medical pre-visit intake assistant with **browser-based voice interaction**. Web API with REST endpoints for conversation management, clinical data extraction, and JSON-based persistence.
 
-## 📋 Table of Contents
+## 🚀 Quick Start (60 Seconds)
 
-- [Overview](#overview)
-- [Features](#features)
-- [System Requirements](#system-requirements)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Usage](#usage)
-- [Architecture](#architecture)
-- [Output Artifacts](#output-artifacts)
-- [Troubleshooting](#troubleshooting)
-- [Development](#development)
-- [Support](#support)
+```bash
+# 1. Clone repository
+git clone https://github.com/VEERESH069/Digital-companion-and-assistant.git
+cd Pre-Visit-real-time-voice-agent
 
----
+# 2. Create virtual environment
+python -m venv venv
+source venv/bin/activate  # or .venv\Scripts\Activate.ps1 on Windows
 
-## 🎯 Overview
+# 3. Install dependencies
+pip install -r requirements.txt
 
-This voice agent conducts real-time intake conversations with patients in multiple languages (Arabic, English, Hindi) and generates structured clinical summaries. It uses OpenAI's language intelligence with Cartesia's natural multilingual TTS, supports patient interruptions, and produces both JSON payloads and PDF briefings suitable for clinical workflows.
+# 4. Set up environment
+cp .env.example .env
+# Edit .env and add your API keys:
+# - OPENAI_API_KEY (for LLM and STT)
+# - CARTESIA_API_KEY (for TTS)
 
-**Tech Stack:**
-- **LLM:** OpenAI GPT-4o-mini for conversational intelligence and clinical data extraction
-- **TTS:** Cartesia sonic-3 with native multilingual voices and language detection
-- **STT:** OpenAI Whisper API (primary) with Google Speech Recognition fallback
-- **Audio:** PyAudio for low-latency PCM streaming (22050 Hz, 16-bit mono)
+# 5. Run locally
+python api.py
+# Server running at http://localhost:5000
+# Web interface at http://localhost:5000/frontend.html
+```
 
 ## ✨ Features
 
 ### Core Capabilities
-- **Multilingual Support:** Arabic, English, Hindi with automatic language detection
-- **Real-Time Interruption:** Patient can interrupt agent speech with built-in vocal interrupt detection
-- **Natural Speech Flow:** Configurable pauses after sentences and questions for human-like conversation
-- **Clinical Data Extraction:** Structured clinical payload generation from conversation
-- **Dual Output Format:** JSON payload + PDF briefing (doctor + patient copies)
-- **Low Latency:** 3-thread LLM→TTS→playback pipeline with zero playback gaps
+- **🎤 Browser-based Voice Recording:** Use Web Audio API to record audio directly in the browser
+- **🗣️ Automatic Speech Recognition:** Google Speech Recognition + OpenAI Whisper integration
+- **🤖 AI Responses:** OpenAI GPT-4 Turbo generates contextual medical responses
+- **🔊 Text-to-Speech:** Cartesia TTS synthesizes natural multilingual speech
+- **🗣️ Multilingual Support:** Arabic, English, Hindi with automatic language detection
+- **📊 Clinical Data Extraction:** Structured JSON output for clinical workflows
+- **💾 JSON Persistence:** Full conversation history stored in database (SQLite/PostgreSQL)
+- **🔗 REST API:** 10+ endpoints for complete conversation management
 
 ### Production Features
-- **Configurable Behavior:** All tuning via `config.py` without code changes
-- **Graceful Fallbacks:** If interrupt detection unavailable, conversation continues safely
-- **Automatic Retries:** Built-in retry logic for STT, TTS, and LLM failures
-- **Extensible LLM:** Easy switch to Anthropic Claude for compatible use cases
-- **Docker Support:** Reproducible containerized environment for deployment
+- **🐳 Docker Ready:** Containerized for Render.com deployment
+- **⚙️ CI/CD Pipeline:** GitHub Actions auto-deploys on main branch push
+- **🔒 CORS Enabled:** Cross-origin requests configured
+- **📝 Database Migrations:** Alembic schema versioning
+- **✅ 33/33 Tests Passing:** Comprehensive test coverage
+- **📱 Responsive Design:** Works on desktop, tablet, and mobile
 
 ### Developer Experience
 - **Comprehensive Tests:** Smoke tests for all components, end-to-end integration tests
