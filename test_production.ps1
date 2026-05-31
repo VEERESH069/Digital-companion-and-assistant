@@ -15,7 +15,12 @@ if (!($envContent -match "OPENAI_API_KEY=(.+)")) {
     exit
 }
 
-Write-Host "`n✓ API key found" -ForegroundColor Green
+if (!($envContent -match "CARTESIA_API_KEY=(.+)")) {
+    Write-Host "✗ CARTESIA_API_KEY not set in .env" -ForegroundColor Red
+    exit
+}
+
+Write-Host "`n✓ API keys found" -ForegroundColor Green
 
 # Check/Install dependencies
 Write-Host "`n🔄 Checking dependencies..." -ForegroundColor Yellow
@@ -25,7 +30,8 @@ $missing = @()
 
 foreach ($pkg in $packages) {
     $pkgName = $pkg.Replace("_", "-")
-    $check = python -c "import $($pkg); print('OK')" 2>$null
+    $importName = if ($pkg -eq "fpdf2") { "fpdf" } else { $pkg }
+    $check = python -c "import $($importName); print('OK')" 2>$null
     if ($check -eq "OK") {
         Write-Host "  ✓ $pkgName" -ForegroundColor Green
     } else {

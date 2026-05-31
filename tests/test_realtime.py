@@ -19,8 +19,9 @@ import logging
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import speech_recognition as sr
+from dotenv import load_dotenv
 import config
-from voice_agent_production import ConversationManager, TTSEngine, STTEngine, LLMEngine
+from voice_agent_production import ConversationManager, TTSEngine, STTEngine, LLMEngine, get_prompt_text
 
 # Configure logging
 logging.basicConfig(
@@ -32,6 +33,8 @@ logger = logging.getLogger(__name__)
 
 def main():
     """Run real-time voice agent test"""
+
+    load_dotenv()
 
     print("\n" + "=" * 70)
     print("  PRE-VISIT VOICE AGENT - Real-Time Test")
@@ -48,7 +51,8 @@ def main():
     print("  1. Arabic (العربية)")
     print("  2. English")
     choice = input("\nEnter choice (1 or 2): ").strip()
-    lang_name = "Arabic" if choice == "1" else "English"
+    preferred_language = "ar" if choice == "1" else "en"
+    lang_name = "Arabic" if preferred_language == "ar" else "English"
     print(f"\n✓ Language: {lang_name}")
     print(f"✓ LLM Model: {config.LLM_MODEL}")
 
@@ -59,16 +63,17 @@ def main():
     microphone = sr.Microphone()
 
     conversation = ConversationManager()
+    conversation.set_preferred_language(preferred_language)
     tts_engine = TTSEngine()
     stt_engine = STTEngine(recognizer, microphone)
     print("  ✓ All services ready")
 
     # Greeting
-    greeting = "صباح الخير! مرحباً! I'm Mariam from CareBot Clinic. كيف حالك النهاردة؟"
+    greeting = get_prompt_text("greeting", conversation.preferred_language)
     print("\n" + "=" * 70)
     print(f"🤖 AGENT: {greeting}")
     print("=" * 70 + "\n")
-    tts_engine.speak(greeting)
+    tts_engine.speak(greeting, language_code=conversation.preferred_language, allow_interrupt=False)
     conversation.add_assistant_message(greeting)
 
     print("📢 INSTRUCTIONS:")

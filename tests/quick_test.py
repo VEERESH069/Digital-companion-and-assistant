@@ -15,9 +15,14 @@ Tests:
 Run: python quick_test.py
 """
 
+import os
 import json
 import logging
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables early to check API keys before imports
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(
@@ -25,6 +30,11 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+def has_required_api_keys():
+    """Check if required API keys are available"""
+    return bool(os.getenv("OPENAI_API_KEY"))
 
 
 def test_configuration():
@@ -54,18 +64,21 @@ def test_llm_service():
     print("=" * 60)
     
     try:
-        from previsit_agent.llm import LLMService
-        import config
-        # Simulate API key check
-        if not hasattr(config, 'OPENAI_API_KEY') or not getattr(config, 'OPENAI_API_KEY', None):
+        # Check API keys before importing
+        if not has_required_api_keys():
             print("⚠ OPENAI_API_KEY not set. Skipping LLM test.")
             print("  Set your API key in .env file to enable this test.")
             return True
+
+        from previsit_agent.conversation import ConversationManager
+        from previsit_agent.llm import LLMEngine, init_openai_client
+
         print("Initializing LLM service...")
-        llm = LLMService()
+        init_openai_client()
+        conversation = ConversationManager()
         print("✓ LLM service initialized")
         print("\nTesting basic chat...")
-        response = llm.chat([{"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": "Say hello in one word."}])
+        response = LLMEngine.get_response(conversation, "Say hello in one word.")
         print(f"✓ Response received: {response}")
         return True
         
@@ -83,19 +96,20 @@ def test_conversation_flow():
     print("=" * 60)
     
     try:
-        from previsit_agent.conversation import ConversationManager
-        from previsit_agent.llm import LLMService
-        import config
-        # Simulate API key check
-        if not hasattr(config, 'OPENAI_API_KEY') or not getattr(config, 'OPENAI_API_KEY', None):
+        # Check API keys before importing
+        if not has_required_api_keys():
             print("⚠ OPENAI_API_KEY not set. Skipping conversation test.")
             return True
+        
+        from previsit_agent.conversation import ConversationManager
+        from previsit_agent.llm import LLMEngine, init_openai_client
         print("Initializing conversation manager...")
-        llm = LLMService()
-        manager = ConversationManager(llm)
+        init_openai_client()
+        manager = ConversationManager()
         print("✓ Conversation manager initialized")
+        greeting = "مرحباً، أنا مريم من CareBot Clinic. كيف حالك النهاردة؟"
+        manager.add_assistant_message(greeting)
         print("\nStarting conversation...")
-        greeting = manager.start_conversation()
         print(f"Agent: {greeting}")
         
         print("\nSimulating patient inputs...")
@@ -109,11 +123,16 @@ def test_conversation_flow():
             print(f"\nTurn {i + 1}:")
             print(f"Patient: {patient_input}")
             
-            response = manager.process_turn(patient_input)
+            response = LLMEngine.get_response(manager, patient_input)
             print(f"Agent: {response}")
         
         # Get summary
-        summary = manager.get_conversation_summary()
+        user_messages = [msg for msg in manager.get_history() if msg.get("role") == "user"]
+        summary = {
+            "turn_count": manager.turn_count,
+            "completion_percentage": (manager.turn_count / 15) * 100,
+            "collected_data": user_messages,
+        }
         print(f"\n✓ Conversation tested")
         print(f"  Turns: {summary['turn_count']}")
         print(f"  Completion: {summary['completion_percentage']:.0f}%")
@@ -135,18 +154,31 @@ def test_data_extraction():
     print("=" * 60)
     
     try:
-        from previsit_agent.llm import LLMService
-        import config
-        # Simulate API key check
-        if not hasattr(config, 'OPENAI_API_KEY') or not getattr(config, 'OPENAI_API_KEY', None):
+        # Check API keys before importing
+        if not has_required_api_keys():
             print("⚠ OPENAI_API_KEY not set. Skipping extraction test.")
             return True
+        
+        from previsit_agent.conversation import ConversationManager
+        from previsit_agent.llm import LLMEngine, init_openai_client
         print("Initializing data extractor...")
-        llm = LLMService()
+        init_openai_client()
+        manager = ConversationManager()
+        manager.add_assistant_message("مرحباً، أنا مريم. ما المشكلة؟")
+        manager.add_user_message("عندي ألم شديد في ضرسي من ٣ أيام")
+        manager.add_assistant_message("أين الألم بالضبط؟")
+        manager.add_user_message("الضرس العلوي الأيمن، ألم ٨ من ١٠")
         # Simulate extraction
         print("\nTesting post-conversation extraction...")
-        test_transcript = """Agent: مرحباً، أنا مريم. ما المشكلة؟\nPatient: عندي ألم شديد في ضرسي من ٣ أيام\nAgent: أين الألم بالضبط؟\nPatient: الضرس العلوي الأيمن، ألم ٨ من ١٠\nAgent: إيه اللي بيزود الألم؟\nPatient: الحاجات السخنة والمضغ\nAgent: بتاخد أي أدوية؟\nPatient: باخد بروفين بس مش بيساعد\nAgent: عندك حساسية من أدوية؟\nPatient: أيوه، من البنسلين\nAgent: عندك أمراض مزمنة؟\nPatient: عندي سكر من النوع التاني"""
-        summary = llm.extract_post_conversation(test_transcript, "TEST-001", "P12345")
+        manager.add_assistant_message("إيه اللي بيزود الألم؟")
+        manager.add_user_message("الحاجات السخنة والمضغ")
+        manager.add_assistant_message("بتاخد أي أدوية؟")
+        manager.add_user_message("باخد بروفين بس مش بيساعد")
+        manager.add_assistant_message("عندك حساسية من أدوية؟")
+        manager.add_user_message("أيوه، من البنسلين")
+        manager.add_assistant_message("عندك أمراض مزمنة؟")
+        manager.add_user_message("عندي سكر من النوع التاني")
+        summary = LLMEngine.extract_clinical_data(manager)
         print(f"\n✓ Extraction completed")
         print(f"\nClinical Summary:")
         print(f"  {summary.get('clinical_summary', 'N/A')}")
@@ -170,12 +202,12 @@ def test_system_integration():
     print("=" * 60)
     
     try:
-        from voice_agent import VoiceAgent
-        import config
-        # Simulate API key check
-        if not hasattr(config, 'OPENAI_API_KEY') or not getattr(config, 'OPENAI_API_KEY', None):
+        # Check API keys before importing
+        if not has_required_api_keys():
             print("⚠ OPENAI_API_KEY not set. Skipping integration test.")
             return True
+        
+        from voice_agent import VoiceAgent
         print("Initializing voice agent system...")
         agent = VoiceAgent()
         print("✓ Voice agent initialized")

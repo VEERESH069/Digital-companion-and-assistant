@@ -1,0 +1,95 @@
+services:
+  # Main Flask API Server
+  - type: web
+    name: pre-visit-voice-agent-api
+    env: python
+    region: oregon  # Change to preferred region
+    plan: free  # free, starter, standard, pro
+    
+    # Build and deployment
+    buildCommand: >
+      pip install --upgrade pip &&
+      pip install -r requirements.txt &&
+      python -m alembic upgrade head
+    
+    startCommand: gunicorn -w 2 -b 0.0.0.0:$PORT api:app
+    
+    # Environment variables
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: OPENAI_API_KEY
+        sync: false  # Set manually in Render dashboard
+      - key: CARTESIA_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        value: sqlite:///./conversations.db  # SQLite for free tier
+      - key: API_KEY
+        sync: false  # JWT secret for API
+      - key: LLM_MODEL
+        value: gpt-4-turbo
+      - key: APP_VERSION
+        value: "1.0.0"
+      - key: CORS_ORIGINS
+        value: "http://localhost:3000,https://yourdomain.com"
+    
+    # Health check
+    healthCheckPath: /health
+    healthCheckInterval: 300  # 5 minutes
+    
+    # Auto-deploy on push to main
+    autoDeploy: true
+    
+    # Scale settings (free tier: 1 instance max)
+    scaling:
+      minInstances: 1
+      maxInstances: 1  # Upgrade to paid plan for auto-scaling
+    
+    # Disk and memory limits
+    disk:
+      name: conversations-data
+      mountPath: /app/data
+      sizeGB: 1  # 1GB free tier
+
+  # Optional: PostgreSQL Database (if not using SQLite)
+  # To use: Uncomment below and update DATABASE_URL
+  # - type: pserv
+  #   name: pre-visit-voice-agent-db
+  #   plan: free  # free tier: 90 days
+  #   region: oregon
+  #   ipAllowList: []  # Allow all IPs from web service
+  #   postgres:
+  #     version: "15"
+
+  # Optional: Redis for caching/sessions (upgrade to paid)
+  # - type: redis
+  #   name: pre-visit-voice-agent-redis
+  #   plan: starter
+  #   region: oregon
+  #   maxmemoryPolicy: allkeys-lru
+
+envVarGroups:
+  - name: Production
+    displayName: Production Environment
+    vars:
+      - FLASK_ENV: production
+      - APP_VERSION: "1.0.0"
+
+# Notification settings
+notifications:
+  - type: webhook
+    url: https://example.com/deploy-webhook  # Optional: notify on deployment
+
+# Git settings
+git:
+  branch: main  # Auto-deploy from main branch
+  deployKey: false  # Use Render's deploy key
+
+# File limits
+limits:
+  maxRequestSize: 25  # 25MB max request size (for file uploads)
+  maxConcurrentRequests: 50

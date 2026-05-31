@@ -2,7 +2,7 @@
 Test script for PDF generation pipeline.
 Tests the extraction → JSON → PDF flow without voice interaction.
 
-Usage: python test_pdf_pipeline.py
+Usage: python tests/test_pdf_pipeline.py
 """
 
 import os
@@ -10,6 +10,11 @@ import sys
 from pathlib import Path
 from typing import Optional
 from dotenv import load_dotenv
+
+# Make project root importable when running this script from tests/
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 # Load environment
 load_dotenv()
@@ -20,7 +25,7 @@ if not os.getenv("OPENAI_API_KEY"):
     sys.exit(1)
 
 # Set up output directory
-OUTPUT_DIR = Path(__file__).parent / "output"
+OUTPUT_DIR = PROJECT_ROOT / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 # Import OpenAI client
@@ -167,7 +172,7 @@ def save_clinical_payload(payload: dict, output_dir: Path) -> Path:
 def generate_pdfs(payload: dict, output_dir: Path) -> tuple:
     """Generate doctor and patient PDF summaries."""
     try:
-        from generate_pdf_summary import ClinicalPayload, build_pdf
+        from previsit_agent.generate_pdf_summary import ClinicalPayload, build_pdf
         
         clinical_payload = ClinicalPayload.from_dict(payload)
         

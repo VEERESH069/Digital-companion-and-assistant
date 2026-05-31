@@ -28,6 +28,12 @@ import re
 from openai import OpenAI
 from dotenv import load_dotenv
 
+# Fix UTF-8 encoding on Windows for emoji/unicode output
+if sys.platform == "win32":
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+
 # Import Cartesia for TTS
 try:
     from cartesia import Cartesia
@@ -72,34 +78,33 @@ class ConversationManager:
     
     def __init__(self):
         self.history: List[Dict[str, str]] = [
-            {"role": "system", "content": """أنت مريم، موظفة استقبال ودودة في عيادة كيربوت الطبية.
+            {"role": "system", "content": """You are Maryam, a friendly receptionist at CareBot Clinic.
+You are conducting a pre-visit consultation call to gather medical information.
 
-You are Mariam, a friendly receptionist at CareBot Clinic.
-You're conducting a pre-visit consultation call to gather medical information.
+Important: You will respond only in English. No matter what language the patient speaks, always respond in English.
 
 Style Guidelines:
-- Keep responses SHORT (1-2 sentences maximum)
-- Ask ONE question at a time  
+- Keep answers short (maximum 2 sentences)
+- Ask one question at a time
 - Show empathy and understanding
-- Speak calmly, warmly, and naturally like a human receptionist
-- Speak slowly and clearly, never rushed
-- Use natural conversational tone with gentle punctuation and short pauses
-- Add appropriate pauses with punctuation (. , ! ?)
-- Respond in the SAME language the patient uses
+- Speak calmly, warmly, and naturally
+- Speak slowly and clearly
+- Use natural conversational tone
+- Add appropriate pauses based on punctuation
 
-Required Information:
+Required Information to Gather:
 1. Chief complaint
-2. Duration  
-3. Pain severity 1-10
-4. Location
-5. Triggers
+2. Duration of symptoms
+3. Pain severity (1-10 scale)
+4. Location of problem
+5. What triggers the symptoms
 6. Current medications
 7. Allergies
 8. Medical conditions
 
-Important:
-- If diabetes + dental infection → high priority
-- Note allergies for treatment planning"""}
+Important Notes:
+- If diabetes + dental infection present → high priority
+- Document all allergies"""}
         ]
         self.turn_count = 0
         self.assistant_turn_events: List[Dict[str, Any]] = []
@@ -135,14 +140,24 @@ Important:
             "hi": "Hindi",
         }
         language_name = language_names.get(self.get_preferred_language(), "English")
+        language_code = self.get_preferred_language()
+        
+        # Much stronger instruction for language consistency
+        system_message = (
+            f"CRITICAL INSTRUCTION - YOU MUST RESPOND ONLY IN {language_name.upper()}:\n"
+            f"• Respond ONLY in {language_name}\n"
+            f"• EVERY sentence MUST be in {language_name}\n"
+            f"• If user speaks another language, still respond ONLY in {language_name}\n"
+            f"• Do NOT mix languages\n"
+            f"• Do NOT translate to English\n"
+            f"• Speak calmly, slowly, and clearly\n"
+            f"• Use short natural sentences with gentle pauses"
+        )
+        
         return self.history + [
             {
                 "role": "system",
-                "content": (
-                    f"Respond only in {language_name}. "
-                    f"If the user asks to switch languages, comply immediately and continue in {language_name}. "
-                    f"Speak calmly, slowly, and clearly with short natural sentences and gentle pauses."
-                ),
+                "content": system_message,
             }
         ]
     
@@ -629,7 +644,7 @@ class STTEngine:
             print("\n   ⚠ Interrupted by user")
             return None, None
         except Exception as e:
-            print(f"   ✗ Listening error: {e}")
+            print(f"   ✗ Listening error: {type(e).__name__}: {e}")
             return None, None
 
 
@@ -896,7 +911,7 @@ def generate_pdfs(payload: dict) -> Tuple[Optional[Path], Optional[Path]]:
         return None, None
     
     try:
-        from generate_pdf_summary import ClinicalPayload, build_pdf
+        from previsit_agent.generate_pdf_summary import ClinicalPayload, build_pdf
         
         clinical_payload = ClinicalPayload.from_dict(payload)
         
@@ -1048,7 +1063,8 @@ def run_voice_agent():
         if not user_text:
             continue
         
-        conversation.set_preferred_language(lang)
+        # Keep agent language consistent (Hindi), don't switch based on user input
+        # conversation.set_preferred_language(lang)
         silence_count = 0
         print(f"\n👤 Patient: {user_text}")
         

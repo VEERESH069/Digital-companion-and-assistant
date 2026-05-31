@@ -1,4 +1,5 @@
 import re
+from typing import Optional
 
 # Production Configuration for Voice Agent
 
@@ -82,7 +83,7 @@ def detect_tts_language(text: str) -> str:
     return "en"
 
 
-def normalize_language_code(language_code: str | None) -> str:
+def normalize_language_code(language_code: Optional[str]) -> str:
     """Normalize locale codes like ar-EG or en_US to Cartesia language keys."""
     if not language_code:
         return "en"
@@ -92,17 +93,17 @@ def normalize_language_code(language_code: str | None) -> str:
     return base_language if base_language in CARTESIA_LANGUAGE_VOICES else "en"
 
 
-def get_cartesia_voice_id(language_code: str | None) -> str:
+def get_cartesia_voice_id(language_code: Optional[str]) -> str:
     """Resolve the configured Cartesia voice ID for a detected language."""
     normalized_language = normalize_language_code(language_code)
     return CARTESIA_LANGUAGE_VOICES.get(normalized_language, CARTESIA_VOICE_DEFAULT)
 
 # STT Settings
 STT_LANGUAGES = ["ar", "en", "hi"]
-STT_ENERGY_THRESHOLD = 300
-STT_DYNAMIC_ENERGY = False
-STT_PAUSE_THRESHOLD = 0.6   # Seconds silence = end of speech; shorter = faster response
-STT_PHRASE_TIME_LIMIT = 10  # Lowered for faster response
+STT_ENERGY_THRESHOLD = 300   # Standard setting (safe)
+STT_DYNAMIC_ENERGY = False  # Keep default for stability
+STT_PAUSE_THRESHOLD = 0.5   # Proven stable (original setting)
+STT_PHRASE_TIME_LIMIT = 5   # Faster transcription (was 6, originally 10)
 
 # Voice Cloning
 ENABLE_VOICE_CLONING = False  # Set to True to use custom voice samples
@@ -110,15 +111,15 @@ VOICE_SAMPLE_PATH = "voice_samples/mariam_voice.wav"
 
 # LLM Settings
 LLM_MODEL = "gpt-4o-mini"
-LLM_TEMPERATURE = 0.7
-LLM_MAX_TOKENS_RESPONSE = 100
+LLM_TEMPERATURE = 0.3   # Lower = faster & more deterministic responses
+LLM_MAX_TOKENS_RESPONSE = 30   # Ultra-short for instant replies
 LLM_MAX_TOKENS_EXTRACTION = 800
 
 # Conversation Settings
 MAX_CONVERSATION_TURNS = 15
 
 # Interrupt Detection
-ENABLE_INTERRUPT_DETECTION = True
+ENABLE_INTERRUPT_DETECTION = False  # Disable to avoid false triggers and latency
 INTERRUPT_CHECK_INTERVAL = 0.05   # How often to check for interrupt (seconds)
 INTERRUPT_ENERGY_THRESHOLD = 1400  # Minimum RMS energy level to trigger interrupt
 INTERRUPT_WARMUP_MS = 700  # Ignore early mic bleed right after playback starts (milliseconds)
@@ -126,10 +127,10 @@ INTERRUPT_CONSECUTIVE_FRAMES = 4  # Frames above threshold required before trigg
 INTERRUPT_BASELINE_MULTIPLIER = 2.2  # Adaptive multiplier over ambient RMS during playback
 INTERRUPT_PEAK_THRESHOLD = 2600  # Peak sample magnitude required to treat audio as speech-like
 
-# Natural Speech Settings
+# Natural Speech Settings (Optimized for Ultra-Low Latency)
 ADD_NATURAL_PAUSES = True  # Add human-like pauses in speech
-PAUSE_AFTER_SENTENCE = 0.5  # Seconds to pause after each sentence
-PAUSE_AFTER_QUESTION = 0.7  # Seconds to pause after questions
+PAUSE_AFTER_SENTENCE = 0.05  # Minimal pause for speed
+PAUSE_AFTER_QUESTION = 0.05   # Minimal pause for speed
 TTS_TAIL_SILENCE_SEC = 0.35  # Short silence after playback so final words are not clipped
 
 # Performance Settings

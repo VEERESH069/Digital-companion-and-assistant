@@ -1,4 +1,6 @@
 # Pre-Visit Real-Time Voice Agent
+python voice_agent_production.py
+\
 
 ![Python](https://img.shields.io/badge/Python-3.9+-3776ab?style=flat-square) ![License](https://img.shields.io/badge/License-Proprietary-red?style=flat-square) ![Status](https://img.shields.io/badge/Status-Production--Ready-green?style=flat-square)
 
@@ -549,8 +551,8 @@ Trigger session end by saying any of these exit keywords:
 Unit Tests              Smoke Tests            Integration Tests       E2E Tests
 (Individual)           (Component Health)     (Feature Flow)         (Full Session)
                                               ↓                       ↓
-test_installation.py → test_cartesia_*.py → test_pdf_pipeline.py → voice_agent_production.py
-                       test_audio.py         test_mic_live.py
+tests/test_installation.py → tests/test_cartesia_*.py → tests/test_pdf_pipeline.py → voice_agent_production.py
+                               tests/test_audio.py      tests/test_mic_live.py
 ```
 
 ### Step 1: Pre-Flight Checks (Run First)
@@ -636,7 +638,7 @@ STATUS: ✅ CARTESIA OK
 #### 2b. Multilingual Audio Generation
 
 ```powershell
-python test_audio.py
+python tests/test_audio.py
 ```
 
 **Purpose:** Test TTS across all supported languages
@@ -668,7 +670,7 @@ ls output/*.wav -Name
 #### 2c. Clinical Extraction & PDF Generation
 
 ```powershell
-python test_pdf_pipeline.py
+python tests/test_pdf_pipeline.py
 ```
 
 **Purpose:** Test clinical data extraction and PDF generation
@@ -800,9 +802,9 @@ python -m pytest tests/ -v --tb=short
 tests/test_installation.py::test_python_version PASSED        [12%]
 tests/test_installation.py::test_dependencies PASSED          [25%]
 tests/test_installation.py::test_api_keys PASSED              [37%]
-test_cartesia_simple.py::test_synthesis PASSED                [50%]
-test_audio.py::test_multilingual_audio PASSED                 [62%]
-test_pdf_pipeline.py::test_pdf_generation PASSED              [75%]
+tests/test_cartesia_simple.py::test_synthesis PASSED          [50%]
+tests/test_audio.py::test_multilingual_audio PASSED           [62%]
+tests/test_pdf_pipeline.py::test_pdf_generation PASSED        [75%]
 tests/test_mic_live.py::test_microphone_input PASSED          [87%]
 tests/quick_test.py::test_system_latency PASSED               [100%]
 
@@ -830,10 +832,10 @@ This generates an XML report for CI/CD integration.
 
 After each deployment, verify:
 
-- [ ] `test_installation.py` passes
-- [ ] `test_cartesia_simple.py` generates valid audio
-- [ ] `test_audio.py` supports all 3 languages
-- [ ] `test_pdf_pipeline.py` produces readable PDFs
+- [ ] `tests/test_installation.py` passes
+- [ ] `tests/test_cartesia_simple.py` generates valid audio
+- [ ] `tests/test_audio.py` supports all 3 languages
+- [ ] `tests/test_pdf_pipeline.py` produces readable PDFs
 - [ ] `tests/test_mic_live.py` captures and transcribes correctly
 - [ ] Full session via `voice_agent_production.py` completes without errors
 - [ ] All output artifacts appear in `output/` directory
@@ -1008,7 +1010,7 @@ python voice_agent.py
 
 ### Check Installation Health
 ```powershell
-python test_installation.py
+python tests/test_installation.py
 ```
 
 ---
@@ -1029,9 +1031,9 @@ python test_installation.py
 ├── generate_pdf_summary.py          # Clinical payload → PDF
 │
 ├── discover_voices.py               # List/preview Cartesia voices
-├── test_cartesia_simple.py          # 1-line TTS test
-├── test_audio.py                    # Multilingual audio generation
-├── test_pdf_pipeline.py             # Clinical extraction test
+├── tests/test_cartesia_simple.py    # 1-line TTS test
+├── tests/test_audio.py              # Multilingual audio generation
+├── tests/test_pdf_pipeline.py       # Clinical extraction test
 │
 ├── tests/                           # Integration tests
 │   ├── test_installation.py
@@ -1065,9 +1067,9 @@ python test_installation.py
 - Exception handling with specific catches (not bare `except`)
 
 ### Testing Checklist Before Production
-- [ ] `python test_cartesia_simple.py` passes
-- [ ] `python test_audio.py` produces audio files
-- [ ] `python test_pdf_pipeline.py` generates PDFs without errors
+- [ ] `python tests/test_cartesia_simple.py` passes
+- [ ] `python tests/test_audio.py` produces audio files
+- [ ] `python tests/test_pdf_pipeline.py` generates PDFs without errors
 - [ ] `python tests/test_installation.py` all checks pass
 - [ ] Manual session: `python voice_agent_production.py` with full conversation
 

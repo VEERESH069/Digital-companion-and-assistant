@@ -131,8 +131,8 @@ python voice_agent_production.py
 
 ### API Keys (`.env` file)
 ```env
-OPENAI_API_KEY=sk-proj-...    # ✅ Already set (for AI)
-CARTESIA_API_KEY=sk_car_...   # ✅ Already set (for TTS)
+OPENAI_API_KEY=<your_openai_api_key>      # Required for AI
+CARTESIA_API_KEY=<your_cartesia_api_key>  # Required for TTS
 ```
 
 ### Settings (`config.py`)
@@ -143,9 +143,13 @@ LLM_TEMPERATURE = 0.7               # Response creativity
 LLM_MAX_TOKENS_RESPONSE = 100       # Response length
 
 # Speech Recognition (STT)
-STT_ENGINE = "whisper"              # "whisper" or "google"
-WHISPER_MODEL = "base"              # Model size
+# Production STT is configured via STT_* keys in config.py
+# and uses the Whisper API by default.
 STT_LANGUAGES = ["ar", "en"]        # Supported languages
+STT_ENERGY_THRESHOLD = 300          # Mic sensitivity
+STT_DYNAMIC_ENERGY = False          # Static threshold for stability
+STT_PAUSE_THRESHOLD = 0.6           # Silence before end of speech
+STT_PHRASE_TIME_LIMIT = 10          # Max seconds per utterance
 
 # Text-to-Speech (Cartesia)
 TTS_ENGINE = "cartesia"             # Using Cartesia
