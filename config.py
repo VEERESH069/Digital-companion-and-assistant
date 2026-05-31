@@ -8,14 +8,14 @@ TTS_ENGINE = "cartesia"  # Using Cartesia for natural multilingual voices
 
 # Cartesia TTS Settings - Natural Multilingual Voices
 CARTESIA_MODEL = "sonic-3"  # Cartesia's latest model
-CARTESIA_VOICE_ARABIC = "6ccbfb76-1fc6-48f7-b71d-91ac6298247b"  # Natural Arabic voice
 CARTESIA_VOICE_ENGLISH = "6ccbfb76-1fc6-48f7-b71d-91ac6298247b"  # Natural English voice
 CARTESIA_VOICE_HINDI = "95d51f79-c397-46f9-b49a-23763d3eaa2d"  # Dedicated Hindi voice
+CARTESIA_VOICE_KANNADA = "a05d4e7f-1f6b-46f9-b49a-31a63d3eaa2d"  # Dedicated Kannada voice
 CARTESIA_VOICE_DEFAULT = CARTESIA_VOICE_ENGLISH
 CARTESIA_LANGUAGE_VOICES = {
-    "ar": CARTESIA_VOICE_ARABIC,
     "en": CARTESIA_VOICE_ENGLISH,
     "hi": CARTESIA_VOICE_HINDI,
+    "kn": CARTESIA_VOICE_KANNADA,
 }
 CARTESIA_OUTPUT_FORMAT = {
     "container": "wav",
@@ -23,8 +23,8 @@ CARTESIA_OUTPUT_FORMAT = {
     "encoding": "pcm_s16le",
 }
 
-ARABIC_TEXT_PATTERN = re.compile(r"[\u0600-\u06FF]")
 DEVANAGARI_TEXT_PATTERN = re.compile(r"[\u0900-\u097F]")
+KANNADA_TEXT_PATTERN = re.compile(r"[\u0C80-\u0CFF]")
 WORD_PATTERN = re.compile(r"[a-zA-Z']+")
 
 # Lightweight keyword model for transliterated language detection.
@@ -39,12 +39,14 @@ TRANSLITERATED_KEYWORDS = {
         "dawai", "dawa", "allergy", "dant", "daant", "masuda", "infection", "samasya",
         "madad", "chahiye", "hoga", "hai", "hain", "doctor", "clinic", "appointment"
     },
-    "ar": {
-        "salam", "salaam", "marhaba", "ahlan", "ahlanwa", "shukran", "afwan", "allah",
-        "kaif", "kif", "halak", "halik", "ana", "anti", "inti", "anta", "enta", "mafi",
-        "tayyib", "tabib", "doctor", "mustashfa", "clinic", "waja", "alam", "mushkila",
-        "asnan", "sin", "dars", "daras", "dawa", "hassasiya", "sudaa", "harara", "sual",
-        "bukra", "alyawm", "alyom", "inshallah", "yalla", "tamam", "mashi", "laa", "na3am"
+    "kn": {
+        "namaskara", "namaskare", "dhanyavada", "shukriya", "kripaya", "kripya", "kripyae",
+        "ninu", "ninige", "ninage", "nammu", "nanna", "nammina", "naan", "eenu", "yaavadu",
+        "yeshte", "yaavade", "kachcha", "yava", "yenu", "yenuvayya", "yenige", "yeni",
+        "haan", "ha", "illa", "sari", "theek", "accha", "swalpa", "maha", "tumba",
+        "dukkha", "vedana", "shita", "osha", "jvara", "kasa", "bastika", "mogina", "sujana",
+        "oushadha", "dava", "allergy", "palu", "pallu", "roga", "samasya", "upachara",
+        "sahaya", "bekannodittu", "idde", "iddhe", "doktor", "clinic", "appointment"
     },
 }
 
@@ -65,21 +67,21 @@ def detect_tts_language(text: str) -> str:
     """Infer the best Cartesia language code from text.
 
     Priority:
-    1) Native script detection (Arabic/Devanagari)
-    2) Transliteration keyword model for Hindi/Arabic in Latin script
+    1) Native script detection (Devanagari/Kannada)
+    2) Transliteration keyword model for Hindi/Kannada in Latin script
     3) English fallback
     """
-    if ARABIC_TEXT_PATTERN.search(text):
-        return "ar"
     if DEVANAGARI_TEXT_PATTERN.search(text):
         return "hi"
+    if KANNADA_TEXT_PATTERN.search(text):
+        return "kn"
 
     scores = _score_transliterated_language(text)
     # Stricter: require at least 3 keyword hits and a clear lead
-    if scores["hi"] >= 3 and scores["hi"] > scores["ar"]:
+    if scores["hi"] >= 3 and scores["hi"] > scores["kn"]:
         return "hi"
-    if scores["ar"] >= 3 and scores["ar"] > scores["hi"]:
-        return "ar"
+    if scores["kn"] >= 3 and scores["kn"] > scores["hi"]:
+        return "kn"
     return "en"
 
 
@@ -99,7 +101,7 @@ def get_cartesia_voice_id(language_code: Optional[str]) -> str:
     return CARTESIA_LANGUAGE_VOICES.get(normalized_language, CARTESIA_VOICE_DEFAULT)
 
 # STT Settings
-STT_LANGUAGES = ["ar", "en", "hi"]
+STT_LANGUAGES = ["en", "hi", "kn"]
 STT_ENERGY_THRESHOLD = 300   # Standard setting (safe)
 STT_DYNAMIC_ENERGY = False  # Keep default for stability
 STT_PAUSE_THRESHOLD = 0.5   # Proven stable (original setting)

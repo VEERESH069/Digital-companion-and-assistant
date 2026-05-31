@@ -118,7 +118,7 @@ class TestSessionManagement:
         
         # Create multiple sessions
         db.create_session(patient_id=patient_id, language="en")
-        db.create_session(patient_id=patient_id, language="ar")
+        db.create_session(patient_id=patient_id, language="kn")
         
         response = client.get(f'/api/patients/{patient_id}/sessions')
         
@@ -357,11 +357,11 @@ class TestDatabaseOperations:
     
     def test_create_session_db(self, db):
         """Test database session creation"""
-        session = db.create_session(patient_id="P_DB_TEST", language="ar")
+        session = db.create_session(patient_id="P_DB_TEST", language="kn")
         
         assert session.session_id is not None
         assert session.patient_id == "P_DB_TEST"
-        assert session.language == "ar"
+        assert session.language == "kn"
         assert session.status == "active"
     
     def test_get_session_db(self, db):

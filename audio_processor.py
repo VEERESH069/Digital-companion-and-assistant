@@ -42,7 +42,7 @@ class AudioProcessor:
         
         Args:
             audio_file_path: Path to audio file (WAV, FLAC, etc.)
-            language: Language code ('ar', 'en', 'hi') - if None, tries to auto-detect
+            language: Language code ('en', 'hi', 'kn') - if None, tries to auto-detect
         
         Returns:
             Tuple of (text, detected_language) or (None, None) if error
@@ -61,10 +61,20 @@ class AudioProcessor:
                 audio = self.recognizer.record(source)
             
             # Try specified language first if provided
-            if language == "ar":
+            if language == "hi":
                 try:
-                    text = self.recognizer.recognize_google(audio, language="ar-EG")
-                    return text, "ar"
+                    text = self.recognizer.recognize_google(audio, language="hi-IN")
+                    return text, "hi"
+                except sr.UnknownValueError:
+                    pass
+                except sr.RequestError as e:
+                    logger.error(f"Google STT service error: {e}")
+                    return None, None
+            
+            elif language == "kn":
+                try:
+                    text = self.recognizer.recognize_google(audio, language="kn-IN")
+                    return text, "kn"
                 except sr.UnknownValueError:
                     pass
                 except sr.RequestError as e:
@@ -83,6 +93,13 @@ class AudioProcessor:
                 text = self.recognizer.recognize_google(audio, language="hi-IN")
                 return text, "hi"
             except sr.UnknownValueError:
+                pass
+            
+            # Try Kannada
+            try:
+                text = self.recognizer.recognize_google(audio, language="kn-IN")
+                return text, "kn"
+            except sr.UnknownValueError:
                 logger.warning("Could not understand audio in any language")
                 return None, None
             
@@ -96,7 +113,7 @@ class AudioProcessor:
         
         Args:
             text: Text to synthesize
-            language: Language code ('ar', 'en', 'hi')
+            language: Language code ('en', 'hi', 'kn')
         
         Returns:
             Audio bytes (WAV format) or None if error

@@ -205,7 +205,7 @@ def create_session():
     Request body:
     {
         "patient_id": "P123456",
-        "language": "en"  # Optional: ar, en, hi
+        "language": "en"  # Optional: en, hi, kn
     }
     """
     try:
@@ -228,8 +228,8 @@ def create_session():
             return jsonify({"error": "patient_id is required"}), 400
         
         language = data.get("language", "en")
-        if language not in ["ar", "en", "hi"]:
-            return jsonify({"error": "Invalid language. Must be ar, en, or hi"}), 400
+        if language not in ["en", "hi", "kn"]:
+            return jsonify({"error": "Invalid language. Must be en, hi, or kn"}), 400
         
         # Create session in database
         session = db.create_session(patient_id=patient_id, language=language)
