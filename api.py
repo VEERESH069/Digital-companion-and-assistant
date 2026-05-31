@@ -172,7 +172,19 @@ def create_session():
     }
     """
     try:
-        data = request.get_json() or {}
+        # Try to get JSON data, handle various error cases
+        try:
+            data = request.get_json(force=False)
+        except Exception as e:
+            # Handle bad JSON or missing content type
+            if "415" in str(e) or "Unsupported Media Type" in str(e):
+                return jsonify({"error": "Missing or invalid Content-Type header"}), 415
+            elif "400" in str(e) or "Bad Request" in str(e):
+                return jsonify({"error": "Malformed JSON"}), 400
+            raise
+        
+        if not data:
+            data = {}
         
         patient_id = data.get("patient_id")
         if not patient_id:
@@ -504,6 +516,32 @@ def before_request():
 def teardown_request(exception=None):
     """Called after each request"""
     pass
+
+
+# ============= ERROR HANDLERS =============
+
+@app.errorhandler(400)
+def bad_request(error):
+    """Handle bad requests"""
+    return jsonify({"error": "Bad request", "message": str(error)}), 400
+
+
+@app.errorhandler(404)
+def not_found(error):
+    """Handle 404 errors"""
+    return jsonify({"error": "Not found", "message": str(error)}), 404
+
+
+@app.errorhandler(415)
+def unsupported_media_type(error):
+    """Handle unsupported media type"""
+    return jsonify({"error": "Unsupported media type", "message": str(error)}), 415
+
+
+@app.errorhandler(500)
+def internal_error(error):
+    """Handle internal server errors"""
+    return jsonify({"error": "Internal server error", "message": str(error)}), 500
 
 
 def create_app():

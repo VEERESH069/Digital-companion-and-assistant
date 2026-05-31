@@ -7,7 +7,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 import logging
 
-from sqlalchemy import create_engine, desc
+from sqlalchemy import create_engine, desc, text
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import StaticPool
 
@@ -135,8 +135,14 @@ class Database:
                 session.status = status
                 session.ended_at = datetime.now(timezone.utc)
                 db.commit()
+                # Detach from session before closing to avoid DetachedInstanceError
+                session_dict = session.to_dict()
                 logger.info(f"Ended session: {session_id}")
-                return session
+                # Return a fresh query result
+                fresh_session = db.query(ConversationSession).filter(
+                    ConversationSession.session_id == session_id
+                ).first()
+                return fresh_session
             return None
         finally:
             db.close()
@@ -302,7 +308,7 @@ class Database:
         """Check if database is accessible"""
         try:
             db = self.get_session()
-            db.execute("SELECT 1")
+            db.execute(text("SELECT 1"))
             db.close()
             return True
         except Exception as e:

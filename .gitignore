@@ -54,6 +54,8 @@ tts_cache/
 voice_samples/
 *.wav
 *.mp3
+*.db
+conversations.db
 
 # Testing
 .pytest_cache/

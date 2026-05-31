@@ -8,8 +8,7 @@ import json
 import uuid
 
 from sqlalchemy import Column, String, Text, DateTime, JSON, Float, Boolean, Integer, ForeignKey, create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
 

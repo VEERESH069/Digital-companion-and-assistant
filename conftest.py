@@ -37,6 +37,10 @@ def client(db):
     """Create Flask test client"""
     app.config['TESTING'] = True
     
+    # Inject the test database into the Flask app
+    import api
+    api.db = db
+    
     with app.test_client() as test_client:
         yield test_client
 
