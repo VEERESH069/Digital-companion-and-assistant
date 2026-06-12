@@ -32,23 +32,36 @@ def listen() -> Tuple[Optional[str], Optional[str]]:
         
         print("   ⏳ Processing speech...")
         
-        # Try Arabic first (Egyptian Arabic)
-        try:
-            text = recognizer.recognize_google(audio, language="ar-EG")  # type: ignore
-            print(f"   ✓ Detected: Arabic")
-            return text, "ar"
-        except:
-            # Fallback to English
+        # Try multiple languages in priority order
+        languages = [
+            ("hi-IN", "Hindi", "hi"),
+            ("mr-IN", "Marathi", "mr"),
+            ("te-IN", "Telugu", "te"),
+            ("bn-IN", "Bengali", "bn"),
+            ("ta-IN", "Tamil", "ta"),
+            ("ml-IN", "Malayalam", "ml"),
+            ("en-IN", "English", "en"),
+        ]
+        
+        for lang_code, lang_name, lang_abbr in languages:
             try:
-                text = recognizer.recognize_google(audio, language="en-US")  # type: ignore
-                print(f"   ✓ Detected: English")
-                return text, "en"
-            except sr.UnknownValueError:
-                print("   ⚠ Could not understand audio")
-                return None, None
-            except sr.RequestError as e:
-                print(f"   ✗ Service error: {e}")
-                return None, None
+                text = recognizer.recognize_google(audio, language=lang_code)  # type: ignore
+                print(f"   ✓ Detected: {lang_name}")
+                return text, lang_abbr
+            except:
+                continue
+        
+        # Final fallback to English (US)
+        try:
+            text = recognizer.recognize_google(audio, language="en-US")  # type: ignore
+            print(f"   ✓ Detected: English (US)")
+            return text, "en"
+        except sr.UnknownValueError:
+            print("   ⚠ Could not understand audio")
+            return None, None
+        except sr.RequestError as e:
+            print(f"   ✗ Service error: {e}")
+            return None, None
                 
     except KeyboardInterrupt:
         print("\n   ⚠ Interrupted by user")
