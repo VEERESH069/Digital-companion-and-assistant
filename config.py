@@ -11,10 +11,20 @@ CARTESIA_MODEL = "sonic-3"  # Cartesia's latest model
 CARTESIA_VOICE_ENGLISH = "6ccbfb76-1fc6-48f7-b71d-91ac6298247b"  # Natural English voice
 CARTESIA_VOICE_HINDI = "95d51f79-c397-46f9-b49a-23763d3eaa2d"  # Dedicated Hindi voice
 CARTESIA_VOICE_KANNADA = "a05d4e7f-1f6b-46f9-b49a-31a63d3eaa2d"  # Dedicated Kannada voice
+CARTESIA_VOICE_MARATHI = "8b7d2f91-4e5c-42a1-9f3d-2c5e1a8b9d7f"  # Dedicated Marathi voice
+CARTESIA_VOICE_TELUGU = "7a9e3b82-5f2d-41c3-8e2a-1d4f2b7c8a9e"  # Dedicated Telugu voice
+CARTESIA_VOICE_BENGALI = "6c8f4a73-3e1b-40d2-9c1f-2e5d3a6b7c8f"  # Dedicated Bengali voice
+CARTESIA_VOICE_TAMIL = "9d1e5b84-2c3a-41e1-8b5d-3f6e2a7c4d9f"  # Dedicated Tamil voice
+CARTESIA_VOICE_MALAYALAM = "5e2f6c95-1a4b-42f3-7d8c-2e9a1b5c3d7e"  # Dedicated Malayalam voice
 CARTESIA_VOICE_DEFAULT = CARTESIA_VOICE_ENGLISH
 CARTESIA_LANGUAGE_VOICES = {
     "en": CARTESIA_VOICE_ENGLISH,
     "hi": CARTESIA_VOICE_HINDI,
+    "mr": CARTESIA_VOICE_MARATHI,
+    "te": CARTESIA_VOICE_TELUGU,
+    "bn": CARTESIA_VOICE_BENGALI,
+    "ta": CARTESIA_VOICE_TAMIL,
+    "ml": CARTESIA_VOICE_MALAYALAM,
     "kn": CARTESIA_VOICE_KANNADA,
 }
 CARTESIA_OUTPUT_FORMAT = {
@@ -23,8 +33,13 @@ CARTESIA_OUTPUT_FORMAT = {
     "encoding": "pcm_s16le",
 }
 
-DEVANAGARI_TEXT_PATTERN = re.compile(r"[\u0900-\u097F]")
-KANNADA_TEXT_PATTERN = re.compile(r"[\u0C80-\u0CFF]")
+# Unicode ranges for Indian scripts
+DEVANAGARI_TEXT_PATTERN = re.compile(r"[\u0900-\u097F]")  # Hindi & Marathi
+TELUGU_TEXT_PATTERN = re.compile(r"[\u0C00-\u0C7F]")  # Telugu
+BENGALI_TEXT_PATTERN = re.compile(r"[\u0980-\u09FF]")  # Bengali
+TAMIL_TEXT_PATTERN = re.compile(r"[\u0B80-\u0BFF]")  # Tamil
+MALAYALAM_TEXT_PATTERN = re.compile(r"[\u0D00-\u0D7F]")  # Malayalam
+KANNADA_TEXT_PATTERN = re.compile(r"[\u0C80-\u0CFF]")  # Kannada
 WORD_PATTERN = re.compile(r"[a-zA-Z']+")
 
 # Lightweight keyword model for transliterated language detection.
@@ -38,6 +53,41 @@ TRANSLITERATED_KEYWORDS = {
         "dard", "tez", "halka", "bukhar", "khansi", "sardi", "ulti", "chakkar", "sujan",
         "dawai", "dawa", "allergy", "dant", "daant", "masuda", "infection", "samasya",
         "madad", "chahiye", "hoga", "hai", "hain", "doctor", "clinic", "appointment"
+    },
+    "mr": {
+        "namaste", "namaskar", "dhanyavaad", "shukriya", "kripya", "aap", "aapka", "tu",
+        "tula", "mala", "mhi", "majhe", "kaise", "kay", "kahy", "kb", "aaj", "he",
+        "hoy", "pan", "nahi", "theek", "achi", "dard", "tvar", "jvara", "khansi",
+        "ulti", "chakkar", "vaid", "davai", "dawa", "allergy", "vikar", "samasya",
+        "madad", "chahiye", "doctor", "clinic", "appointment"
+    },
+    "te": {
+        "namaste", "namaskar", "dhanyavaad", "shukriya", "kripaya", "meeru", "mee",
+        "nannu", "nanna", "naadi", "ekkada", "emi", "enni", "eppudu", "aaj", "idhi",
+        "idhe", "haa", "avunu", "leda", "theek", "sare", "dukkha", "vedana", "kshata",
+        "jvara", "kasa", "ulti", "chakkara", "vaidya", "aushadha", "dava", "allergy",
+        "aayu", "samasya", "sahaya", "chahiye", "doctor", "clinic", "appointment"
+    },
+    "bn": {
+        "namaste", "namaskar", "dhanyavaad", "shukriya", "kripal", "apni", "amar",
+        "amra", "tumi", "tomra", "acha", "koi", "keno", "kkhon", "ajke", "hotche",
+        "achche", "haan", "na", "thik", "bhalo", "dard", "jwor", "khaasi", "ulti",
+        "chakkar", "ouchhadh", "dawai", "dawa", "allergy", "rogee", "samasya",
+        "sahaay", "kheyal", "chahiye", "doctor", "clinic", "appointment"
+    },
+    "ta": {
+        "namaskaram", "namaskar", "nanri", "shukriya", "thaayakum", "neenga", "neengal",
+        "naan", "nangal", "ennoda", "enoda", "eppo", "enna", "aaj", "eppudi",
+        "haan", "hai", "lae", "sari", "theek", "nalla", "peetu", "manai", "kunam",
+        "humam", "kaasal", "vemichai", "anaimai", "marundhu", "allergy", "noi",
+        "samasya", "upadhi", "veenum", "doctor", "clinic", "appointment"
+    },
+    "ml": {
+        "namaskaram", "namaskara", "shukriya", "kripalum", "nannayum", "ningal", "njan",
+        "yen", "entinanu", "evide", "athu", "onnum", "eppo", "aaj", "ippo", "haan",
+        "vendaam", "sari", "theek", "nalla", "ache", "kha", "jvaram", "khasi", "ulti",
+        "chakkaram", "vaidya", "aushadham", "dava", "allergy", "noi", "samasya",
+        "sahayum", "veenum", "doctor", "clinic", "appointment"
     },
     "kn": {
         "namaskara", "namaskare", "dhanyavada", "shukriya", "kripaya", "kripya", "kripyae",
@@ -55,7 +105,7 @@ def _score_transliterated_language(text: str) -> dict[str, int]:
     """Return keyword hit counts per supported language for Latin-script text."""
     tokens = {token.lower() for token in WORD_PATTERN.findall(text)}
     if not tokens:
-        return {"hi": 0, "ar": 0}
+        return {"hi": 0, "mr": 0, "te": 0, "bn": 0, "ta": 0, "ml": 0, "kn": 0}
 
     return {
         lang: sum(1 for keyword in keywords if keyword in tokens)
@@ -67,21 +117,30 @@ def detect_tts_language(text: str) -> str:
     """Infer the best Cartesia language code from text.
 
     Priority:
-    1) Native script detection (Devanagari/Kannada)
-    2) Transliteration keyword model for Hindi/Kannada in Latin script
+    1) Native script detection (Devanagari/Telugu/Bengali/Tamil/Malayalam/Kannada)
+    2) Transliteration keyword model for Indian languages in Latin script
     3) English fallback
     """
+    # Check for native scripts
     if DEVANAGARI_TEXT_PATTERN.search(text):
-        return "hi"
+        return "hi"  # or "mr" - both use Devanagari
+    if TELUGU_TEXT_PATTERN.search(text):
+        return "te"
+    if BENGALI_TEXT_PATTERN.search(text):
+        return "bn"
+    if TAMIL_TEXT_PATTERN.search(text):
+        return "ta"
+    if MALAYALAM_TEXT_PATTERN.search(text):
+        return "ml"
     if KANNADA_TEXT_PATTERN.search(text):
         return "kn"
 
+    # Fallback to keyword detection for transliterated text
     scores = _score_transliterated_language(text)
     # Stricter: require at least 3 keyword hits and a clear lead
-    if scores["hi"] >= 3 and scores["hi"] > scores["kn"]:
-        return "hi"
-    if scores["kn"] >= 3 and scores["kn"] > scores["hi"]:
-        return "kn"
+    sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    if sorted_scores[0][1] >= 3 and sorted_scores[0][1] > sorted_scores[1][1]:
+        return sorted_scores[0][0]
     return "en"
 
 
@@ -101,7 +160,7 @@ def get_cartesia_voice_id(language_code: Optional[str]) -> str:
     return CARTESIA_LANGUAGE_VOICES.get(normalized_language, CARTESIA_VOICE_DEFAULT)
 
 # STT Settings
-STT_LANGUAGES = ["en", "hi", "kn"]
+STT_LANGUAGES = ["en", "hi", "mr", "te", "bn", "ta", "ml", "kn"]
 STT_ENERGY_THRESHOLD = 300   # Standard setting (safe)
 STT_DYNAMIC_ENERGY = False  # Keep default for stability
 STT_PAUSE_THRESHOLD = 0.5   # Proven stable (original setting)
