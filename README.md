@@ -1100,28 +1100,21 @@ Submit feature requests with:
 
 ---
 
-## 📄 License
 
-**Proprietary - EnsanAI / CareBot Clinic**
-
-All source code, documentation, and assets are proprietary and confidential. Unauthorized reproduction, distribution, or use is strictly prohibited.
-
----
 
 ## 👥 Authors
 
-**EnsanAI Team** — Building intelligent healthcare technology
+**Veeresh S K**
 
 ---
 
 ## 📞 Contact
 
 For questions, issues, or deployment support:
-- **Internal:** Contact EnsanAI Team
+- Contact Veeresh S K (veereshsk1249@gmail.com)
 - **External:** Submit via documented issue channels
 
 ---
 
 **Last Updated:** March 17, 2026  
-**Version:** 1.0.0  
-**Status:** Production Ready
+**Version:** 1.0.0 
